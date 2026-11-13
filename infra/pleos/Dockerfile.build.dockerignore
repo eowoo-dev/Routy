@@ -1,0 +1,4 @@
+**
+!infra/
+!infra/pleos/
+!infra/pleos/gradle-entrypoint.sh

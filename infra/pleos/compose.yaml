@@ -1,0 +1,26 @@
+services:
+  emulator:
+    image: routy/pleos-dev:test
+    build: .
+    container_name: routy-pleos
+    devices:
+      - /dev/kvm:/dev/kvm
+    shm_size: 2gb
+    stop_grace_period: 30s
+    volumes:
+      - type: bind
+        source: ${PLEOS_DOWNLOAD_DIR:?Set PLEOS_DOWNLOAD_DIR to the downloaded image directory}
+        target: /images
+        read_only: true
+      - pleos-data:/data
+    ports:
+      - "127.0.0.1:8088:8088"
+    healthcheck:
+      test: ["CMD-SHELL", "test \"$$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\\r')\" = 1"]
+      interval: 20s
+      timeout: 10s
+      start_period: 5m
+      retries: 15
+
+volumes:
+  pleos-data:

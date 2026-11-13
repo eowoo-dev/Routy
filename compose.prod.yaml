@@ -1,0 +1,60 @@
+name: routy-prod
+
+services:
+  pleos:
+    profiles: [tools]
+    build:
+      context: .
+      dockerfile: infra/pleos/Dockerfile.build
+    init: true
+    environment:
+      ROUTY_API_BASE_URL: ${ROUTY_API_BASE_URL:-}
+    volumes:
+      - .:/workspace
+      - pleos-gradle-cache:/root/.gradle
+      - pleos-android-user:/root/.android
+      - pleos-project-cache:/workspace/apps/pleos/.gradle
+      - pleos-kotlin-cache:/workspace/apps/pleos/.kotlin
+    command: [":app:assembleRelease"]
+  web:
+    build:
+      context: .
+      dockerfile: infra/services/Dockerfile.prod
+    init: true
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${WEB_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: '1'
+      DATABASE_URL: postgresql://routy:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.prod}@db:5432/routy?schema=public
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 5
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: routy
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.prod}
+      POSTGRES_DB: routy
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U routy -d routy]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pleos-gradle-cache:
+  pleos-android-user:
+  pleos-project-cache:
+  pleos-kotlin-cache:
+  postgres-data:

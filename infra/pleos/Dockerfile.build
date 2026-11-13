@@ -1,0 +1,22 @@
+FROM eclipse-temurin:21-jdk-jammy
+
+ENV ANDROID_HOME=/opt/android-sdk GRADLE_USER_HOME=/root/.gradle
+ENV PATH="${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/cmdline-tools/latest/bin:${PATH}"
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl unzip \
+    && rm -rf /var/lib/apt/lists/*
+RUN curl -fL --retry 3 -o /tmp/tools.zip \
+    https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip \
+    && echo 'd313adb7aedccf6cf0cfca51ec180f0059f5f8f8  /tmp/tools.zip' | sha1sum -c - \
+    && mkdir -p "${ANDROID_HOME}/cmdline-tools" \
+    && unzip -q /tmp/tools.zip -d "${ANDROID_HOME}/cmdline-tools" \
+    && mv "${ANDROID_HOME}/cmdline-tools/cmdline-tools" "${ANDROID_HOME}/cmdline-tools/latest" \
+    && rm /tmp/tools.zip \
+    && yes | sdkmanager --licenses >/dev/null \
+    && sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
+
+RUN sdkmanager 'platform-tools'
+
+COPY infra/pleos/gradle-entrypoint.sh /opt/routy/gradle-entrypoint.sh
+WORKDIR /workspace/apps/pleos
+ENTRYPOINT ["sh", "/opt/routy/gradle-entrypoint.sh"]
+CMD [":app:assembleDebug"]

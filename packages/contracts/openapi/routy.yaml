@@ -1,0 +1,32 @@
+openapi: 3.0.3
+info:
+  title: Routy API
+  version: 0.1.0
+paths:
+  /api/health:
+    get:
+      operationId: getHealth
+      summary: Check API process health
+      responses:
+        '200':
+          description: API process is available (does not check the database)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      additionalProperties: false
+      required: [status, service, timestamp]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+        service:
+          type: string
+          enum: [routy]
+        timestamp:
+          type: string
+          format: date-time

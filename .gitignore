@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Next.js and Capacitor web build outputs
+.next/
+out/
+.app-build/
+.app-out-next/
+dist/
+coverage/
+*.tsbuildinfo
+apps/web/src/generated/
+
+# Local configuration and credentials
+.env*
+!.env.example
+!.env.*.example
+local.properties
+*.jks
+*.keystore
+*.p8
+*.p12
+*.mobileprovision
+
+# Android / Gradle
+.gradle/
+.kotlin/
+build/
+.cxx/
+
+# iOS
+DerivedData/
+Pods/
+*.xcarchive/
+*.ipa
+xcuserdata/
+
+# Editor / OS
+.idea/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,27 @@
+import { defineConfig, globalIgnores } from "eslint/config";
+import nextVitals from "eslint-config-next/core-web-vitals";
+import nextTs from "eslint-config-next/typescript";
+
+const eslintConfig = defineConfig([
+  ...nextVitals,
+  ...nextTs,
+  // Override default ignores of eslint-config-next.
+  globalIgnores([
+    // Default ignores of eslint-config-next:
+    ".next/**",
+    ".app-build/**",
+    ".app-out-next/**",
+    ".ops-backups/**",
+    ".ops-state/**",
+    "android/.gradle/**",
+    "android/**/build/**",
+    "android/app/src/main/assets/**",
+    "ios/App/App/public/**",
+    "out/**",
+    "build/**",
+    "public/pdfjs/**",
+    "next-env.d.ts",
+  ]),
+]);
+
+export default eslintConfig;

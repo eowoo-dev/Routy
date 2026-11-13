@@ -1,0 +1,30 @@
+import type { Metadata, Viewport } from "next";
+import type { ReactNode } from "react";
+import EmotionRegistry from "./EmotionRegistry";
+import GlobalStyles from "./GlobalStyles";
+import { Providers } from "./providers";
+
+export const metadata: Metadata = {
+  title: "Routy | 나에게 맞는 길, 나아지는 운전",
+  description: "맞춤형 운전 연습과 주행 복습을 연결하는 루티",
+  applicationName: "Routy",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
+
+export default function RootLayout({ children }: { children: ReactNode }) {
+  return (
+    <html lang="ko">
+      <body>
+        <EmotionRegistry>
+          <GlobalStyles />
+          <Providers>{children}</Providers>
+        </EmotionRegistry>
+      </body>
+    </html>
+  );
+}
