@@ -20,7 +20,7 @@ data class EnvironmentReview(val quality: List<EnvironmentCoverage>,val issues: 
 object EnvironmentReviewBuilder {
     private fun leader(f: EnvironmentFrame)=f.vehicles.filter { it.s>f.s && abs(it.d-f.d)<(it.width+1.8)/2 }.minByOrNull { it.s }
     private fun completed(e:EnvironmentEvent)=e.kind in setOf("LANE_CHANGE_LEFT","LANE_CHANGE_RIGHT","MULTI_LANE_CHANGE_LEFT","MULTI_LANE_CHANGE_RIGHT")
-    private fun samples(frames: List<EnvironmentFrame>,changes:List<EnvironmentEvent> = emptyList()): Map<String,Double> {
+    internal fun samples(frames: List<EnvironmentFrame>,changes:List<EnvironmentEvent> = emptyList()): Map<String,Double> {
         val values=mutableMapOf<String,Double>()
         fun minValue(key:String,value:Double) { if(value.isFinite()) values[key]=min(values[key] ?: value,value) }
         for(f in frames.filter { EnvironmentEvaluation.usable(it) }) {
@@ -56,7 +56,7 @@ object EnvironmentReviewBuilder {
                 metrics["signalOffDurationMs"]=rows.zipWithNext().sumOf { (a,b)->if(a.signal=="OFF" && b.atMs-a.atMs in 1..250) b.atMs-a.atMs else 0L }.toDouble()
             }
         }
-        event.copy(evidence=metrics.toSortedMap(),subjectId=rows.asReversed().firstNotNullOfOrNull { leader(it)?.id })
+        event.copy(evidence=(metrics+event.evidence).toSortedMap(),subjectId=event.subjectId ?: rows.asReversed().firstNotNullOfOrNull { leader(it)?.id })
     }
     fun build(frames:List<EnvironmentFrame>,events:List<EnvironmentEvent>,extra:List<EnvironmentIssue> = emptyList(),
         startMs:Long=frames.minOfOrNull { it.atMs.coerceAtLeast(0) } ?: 0,endMs:Long=frames.maxOfOrNull { it.atMs.coerceAtLeast(startMs) } ?: startMs):EnvironmentReview {

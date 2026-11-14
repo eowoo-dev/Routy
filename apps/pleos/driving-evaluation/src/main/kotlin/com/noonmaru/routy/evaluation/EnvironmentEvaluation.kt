@@ -54,24 +54,43 @@ object EnvironmentEvaluation {
 
     fun evaluate(frames: List<EnvironmentFrame>, detailed:Boolean=true, issues:List<EnvironmentIssue> = emptyList(),
         startMs:Long=frames.minOfOrNull { it.atMs.coerceAtLeast(0) } ?: 0,endMs:Long=frames.maxOfOrNull { it.atMs.coerceAtLeast(startMs) } ?: startMs): EnvironmentResult {
-        val events = mutableListOf<EnvironmentEvent>()
-        var previous: EnvironmentFrame? = null
-        var lane: Int? = null
-        var target: Int? = null
-        var settle = 0L
-        var changeStart: Long? = null
-        var originalSignal = "UNKNOWN"
-        var signalSince: Long? = null
-        var preparationSince: Long? = null
+        return Stream(false).consume(frames,detailed,issues,startMs,endMs,final=true)
+    }
+
+    /** Constant-size maneuver/episode state; storage boundaries are not observation gaps. */
+    class Stream(private val retainEvidence:Boolean=true) {
+        private var previous: EnvironmentFrame? = null
+        private var lane: Int? = null
+        private var target: Int? = null
+        private var settle = 0L
+        private var changeStart: Long? = null
+        private var originalSignal = "UNKNOWN"
+        private var signalSince: Long? = null
+        private var preparationSince: Long? = null
         val changeSignals=linkedSetOf<String>()
-        var excluded = 0
-        var leaderId: String? = null
-        val episodes = mutableMapOf<String, Pair<Long, Long>>()
+        private var leaderId: String? = null
+        private val episodes = mutableMapOf<String, Pair<Long, Long>>()
+        private val episodeMetrics=mutableMapOf<String,Map<String,Double>>()
+        private var changeMetrics=emptyMap<String,Double>()
+        private var offDuration=0L
+        private fun combine(a:Map<String,Double>,b:Map<String,Double>)=(a.keys+b.keys).associateWith { key ->
+            val x=a[key];val y=b[key]
+            if(x==null)y!! else if(y==null)x else if(key.startsWith("min")) min(x,y) else max(x,y)
+        }
+        fun consume(frames:List<EnvironmentFrame>,detailed:Boolean=true,issues:List<EnvironmentIssue> = emptyList(),
+            startMs:Long,endMs:Long,final:Boolean=false):EnvironmentResult {
+        var excluded=0
+        val events=mutableListOf<EnvironmentEvent>()
+        var currentMetrics=emptyMap<String,Double>()
         fun finish(key: String) {
-            episodes.remove(key)?.let { (start,end) -> if(end-start >= (if(key=="VEHICLE_BODY_OVERLAP") 0 else 500)) events += EnvironmentEvent(key,start,end,"SIMULATED_ENVIRONMENT") }
+            episodes.remove(key)?.let { (start,end) -> if(end-start >= (if(key=="VEHICLE_BODY_OVERLAP") 0 else 500)) events += EnvironmentEvent(key,start,end,"SIMULATED_ENVIRONMENT",episodeMetrics[key] ?: emptyMap(),if(retainEvidence)leaderId else null) }
+            episodeMetrics.remove(key)
         }
         fun episode(key: String, active: Boolean, at: Long) {
-            if(active) episodes[key] = (episodes[key]?.first ?: at) to at else finish(key)
+            if(active) {
+                episodes[key] = (episodes[key]?.first ?: at) to at
+                if(retainEvidence)episodeMetrics[key]=combine(episodeMetrics[key] ?: emptyMap(),currentMetrics)
+            } else finish(key)
         }
         fun reset() {
             episodes.keys.toList().forEach(::finish)
@@ -89,6 +108,7 @@ object EnvironmentEvaluation {
             val continuous=p!=null && p.runId==f.runId && f.sequence>p.sequence && f.atMs-p.atMs in 1..250 && abs(f.s-p.s)<20 && abs(f.d-p.d)<2
             if(!valid) { excluded++; reset(); previous=null; continue }
             if(p!=null && !continuous) { excluded++; reset() }
+            currentMetrics=if(retainEvidence)EnvironmentReviewBuilder.samples(listOf(f)) else emptyMap()
             val currentLane=round(f.d/3.7).toInt()
             if(currentLane !in -1..1) { excluded++; reset(); previous=null; continue }
             val halfWidth=abs(cos(f.heading))*.9+abs(sin(f.heading))*2.4
@@ -103,15 +123,18 @@ object EnvironmentEvaluation {
                 if(crosses && changeStart==null) {
                     changeStart=f.atMs; originalSignal=f.signal; target=null
                     preparationSince=signalSince;changeSignals.clear();changeSignals+=f.signal
+                    changeMetrics=emptyMap();offDuration=0
                 }
                 if(changeStart!=null) {
+                    if(retainEvidence)changeMetrics=combine(changeMetrics,currentMetrics.filterKeys{it!="minLaneClearanceM"})
+                    if(continuous && p.atMs>=changeStart!! && p.signal=="OFF")offDuration+=f.atMs-p.atMs
                     if(currentLane!=base && inside) {
                         if(target!=currentLane) { target=currentLane; settle=f.atMs }
                         if(f.atMs-settle>=1000) {
                             val direction=if(currentLane>base) "LEFT" else "RIGHT"
                             val start=changeStart!!
                             val kind=if(abs(currentLane-base)>1) "MULTI_LANE_CHANGE_$direction" else "LANE_CHANGE_$direction"
-                            events += EnvironmentEvent(kind,start,f.atMs,"$base -> $currentLane")
+                            events += EnvironmentEvent(kind,start,f.atMs,"$base -> $currentLane",changeMetrics)
                             val opposite=if(direction=="LEFT") "RIGHT" else "LEFT"
                             val usage=when {
                                 "UNKNOWN" in changeSignals -> "LANE_CHANGE_SIGNAL_UNAVAILABLE"
@@ -122,7 +145,7 @@ object EnvironmentEvaluation {
                                 (preparationSince ?: start)>start-3000 -> "LATE_LANE_CHANGE_SIGNAL"
                                 else -> "LANE_CHANGE_SIGNAL_OBSERVED"
                             }
-                            events += EnvironmentEvent(usage,start,f.atMs,"experimental preparation interval 3000ms")
+                            events += EnvironmentEvent(usage,start,f.atMs,"experimental preparation interval 3000ms",if(retainEvidence)changeMetrics+mapOf("signalPreparationMs" to (start-(preparationSince ?: start)).toDouble(),"signalOffDurationMs" to offDuration.toDouble()) else emptyMap())
                             lane=currentLane; changeStart=null; target=null
                         }
                     } else {
@@ -156,10 +179,15 @@ object EnvironmentEvaluation {
             episode("STOPPED_BEFORE_RED",f.light=="RED" && f.speed<.1 && f.stopLineS-(f.s+2.4) in 0.0..5.0,f.atMs)
             previous=f
         }
-        reset()
+        if(final)reset()
         val ordered=events.sortedBy { it.startMs }
         if(!detailed)return EnvironmentResult("SIMULATED_ENVIRONMENT",frames.size,excluded,ordered)
         val enriched=EnvironmentReviewBuilder.enrich(frames,ordered)
-        return EnvironmentResult("SIMULATED_ENVIRONMENT",frames.size,excluded,enriched,EnvironmentReviewBuilder.build(frames,enriched,issues,startMs,endMs))
+        val review=EnvironmentReviewBuilder.build(frames,enriched,issues,startMs,endMs)
+        val identified=if(!retainEvidence)review else review.copy(groups=review.groups.map { g ->
+            g.copy(id="environment-${frames.firstOrNull()?.runId ?: "continued"}-${g.startMs}-${g.endMs}-${g.kinds.joinToString("-")}")
+        })
+        return EnvironmentResult("SIMULATED_ENVIRONMENT",frames.size,excluded,enriched,identified)
+    }
     }
 }
