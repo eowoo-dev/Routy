@@ -4,6 +4,7 @@ import type { DrivingRecordUpload, DrivingRecordSummary, DrivingRecordDetail } f
 import type { DrivingRecord, Prisma } from "@/generated/prisma/client";
 import { db } from "@/server/db";
 import { ApiProblem,canonical,digest,uuid } from "./validation";
+import { archiveReviewPreview } from "./review-preview";
 
 function equal(a:string,b:string){return timingSafeEqual(Buffer.from(a,"hex"),Buffer.from(b,"hex"));}
 function duplicate(e:unknown){return !!e && typeof e==="object" && "code" in e && e.code==="P2002";}
@@ -50,5 +51,17 @@ export async function list(installationId:string,url:URL) {
 export async function detail(installationId:string,sessionId:string):Promise<DrivingRecordDetail> {
   const row=await db.drivingRecord.findUnique({where:{installationId_sessionId:{installationId,sessionId}}});
   if(!row)throw new ApiProblem(404,"NOT_FOUND","주행 기록이 없습니다.");
-  return {...summary(row),report:row.report as Record<string,unknown>,...(row.archiveParts!=null && row.archiveSha256!=null?{archive:{parts:row.archiveParts,bytes:Number(row.archiveBytes),sha256:row.archiveSha256}}:{})};
+  let report=row.report as Record<string,unknown>;
+  const environment=report.environment as Record<string,unknown>|undefined;
+  if(row.archiveParts && !environment?.review) {
+    const count=row.archiveParts;
+    async function* chunks(){for(let index=0;index<count;index++){
+      const part=await db.drivingRecordPart.findUnique({where:{installationId_sessionId_index:{installationId,sessionId,index}},select:{bytes:true}});
+      if(!part)throw new ApiProblem(409,"ARCHIVE_INCOMPLETE","상세 평가를 불러오지 못했습니다. 다시 시도해주세요.");
+      yield part.bytes;
+    }}
+    const restored=await archiveReviewPreview(chunks());
+    if(restored.review.groups.length>0)report={...report,environment:{...environment,review:restored.review},reviewPreview:restored.preview};
+  }
+  return {...summary(row),report,...(row.archiveParts!=null && row.archiveSha256!=null?{archive:{parts:row.archiveParts,bytes:Number(row.archiveBytes),sha256:row.archiveSha256}}:{})};
 }

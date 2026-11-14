@@ -64,3 +64,18 @@ test("missing, damaged, conflicting and unordered parts cannot finalize",async()
   });
   assert.equal(oversized,413);
 });
+
+test("legacy segmented detail restores environmental review without changing immutable stored summary",async()=>{
+  const id=randomUUID(),path=`/api/driving-records/${id}`;
+  const group={id:"environment-old-0",startMs:100,endMs:800,title:"차간거리가 짧았어요",nextPractice:"여유 간격을 확보해보세요",kinds:["SHORT_FOLLOWING_HEADWAY"],evidence:{minHeadwayS:0.7},limited:false};
+  const bytes=Buffer.from(JSON.stringify({index:0,coreStartMs:50,coreEndMs:1050,report:{environment:{review:{groups:[group],quality:[]}}}})+"\n");
+  const archive={parts:1,bytes:bytes.length,sha256:hash(bytes)};
+  assert.equal((await send(path+"/parts/0","PUT",{data:bytes.toString("base64"),sha256:hash(bytes)})).status,200);
+  assert.equal((await send(path+"/complete","POST",{record:payload(),archive})).status,201);
+  const response=await send(path);assert.equal(response.status,200);
+  const detail=await response.json();assert.equal(detail.report.environment.review.groups[0].title,group.title);
+  assert.equal(detail.report.reviewPreview.source,"LEGACY_ARCHIVE");
+  const stored=await db.drivingRecord.findUniqueOrThrow({where:{installationId_sessionId:{installationId:ids[0],sessionId:id}}});
+  assert.deepEqual(stored.report,payload().report);
+  assert.equal((await send(path,"GET",undefined,1)).status,404);
+});
