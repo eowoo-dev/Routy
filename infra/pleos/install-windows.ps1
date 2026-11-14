@@ -18,6 +18,8 @@ if (-not (Test-Path -LiteralPath $apk)) { throw "Debug APK not found: $apk" }
 
 & $adb -s $Serial reverse tcp:3000 tcp:3000
 if ($LASTEXITCODE -ne 0) { throw 'ADB reverse failed.' }
+& $adb -s $Serial reverse tcp:8090 tcp:8090
+if ($LASTEXITCODE -ne 0) { throw 'Console extension ADB reverse failed.' }
 & $adb -s $Serial install -r $apk
 if ($LASTEXITCODE -ne 0) { throw 'APK install failed.' }
 & $adb -s $Serial shell am start -W -n 'com.noonmaru.routy.pleos.debug/com.noonmaru.routy.pleos.MainActivity'

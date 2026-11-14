@@ -2,11 +2,20 @@ import http from 'node:http';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { patchHighway } from './patches/highway-view.mjs';
+import { EnvironmentSimulation } from './environment/simulation.mjs';
 
 const upstream = new URL(process.env.CONSOLE_UPSTREAM ?? 'http://host.docker.internal:8088');
 const manifest = JSON.parse(await readFile(new URL('./upstream-manifest.json', import.meta.url)));
 let latest = null;
 let receivedAt = 0;
+let simulation = null, input = null, inputAt = 0, frames = [];
+setInterval(() => {
+  if (!input || performance.now()-inputAt>500) return;
+  if (!simulation) simulation = new EnvironmentSimulation(crypto.randomUUID());
+  const time=simulation.atMs/1000;
+  frames.push(simulation.step({ ...input, light: time%30<15 ? 'RED' : 'GREEN', vehicles: [{ id:'lead-1',s:80+8*time,d:0,speed:8 }] }));
+  if(frames.length>12000) frames.shift();
+},50).unref();
 const send = (res, status, value) => {
   res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' });
   res.end(JSON.stringify(value));
@@ -15,6 +24,18 @@ const send = (res, status, value) => {
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
+    if(url.pathname==='/routy/model' && req.method==='GET') return send(res,frames.length && performance.now()-inputAt<500 ? 200 : 503,{frame:frames.at(-1) ?? null});
+    if(url.pathname==='/routy/trace' && req.method==='GET') return send(res,frames.length?200:503,{frames});
+    if(url.pathname==='/routy/input' && req.method==='POST') {
+      if(!req.headers['content-type']?.startsWith('application/json')) return send(res,415,{error:'JSON required'});
+      if(req.headers.origin && req.headers.origin!==`http://${req.headers.host}`) return send(res,403,{error:'Origin mismatch'});
+      let body='';
+      for await(const chunk of req) { body+=chunk; if(body.length>4096)return send(res,413,{error:'Input too large'}); }
+      let value; try { value=JSON.parse(body); } catch { return send(res,400,{error:'Invalid JSON'}); }
+      if(!Number.isFinite(value.speed) || value.speed<0 || value.speed>60 || !Number.isFinite(value.steeringDeg) || !['OFF','LEFT','RIGHT','UNKNOWN'].includes(value.signal)) return send(res,400,{error:'Invalid input'});
+      if(performance.now()-inputAt>500) { simulation=null; frames=[]; }
+      input=value; inputAt=performance.now(); return send(res,200,{accepted:true});
+    }
     if (url.pathname === '/routy/health') {
       return send(res, 200, { status: 'ok', upstream: upstream.origin });
     }

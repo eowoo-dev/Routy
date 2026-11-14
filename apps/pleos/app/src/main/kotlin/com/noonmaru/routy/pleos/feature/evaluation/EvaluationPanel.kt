@@ -65,7 +65,15 @@ fun EvaluationPanel(model: EvaluationViewModel = viewModel()) {
         }, enabled = state !is EvaluationState.Recording, modifier = Modifier.heightIn(min = 64.dp)) {
             Text("실제 센서 전체 30초 수집·분석")
         }
+        if (com.noonmaru.routy.pleos.BuildConfig.DEBUG) {
+            OutlinedButton(onClick=model::analyzeEnvironment, enabled=state !is EvaluationState.Recording,
+                modifier=Modifier.heightIn(min=64.dp)) { Text("가상 환경 기록 분석") }
+        }
         when (val current = state) {
+            is EvaluationState.EnvironmentFinished -> {
+                Text("가상 환경 분석 · ${current.result.frames} 프레임 · 제외 ${current.result.excluded}개")
+                current.result.events.forEach { Text("${it.feedback}\n${it.startMs / 1000.0}~${it.endMs / 1000.0}초") }
+            }
             EvaluationState.Idle -> Text("합성 재생과 실제 센서 수집은 별도로 표시됩니다. 실제 수집은 이 화면이 열려 있을 때만 동작합니다.")
             is EvaluationState.Recording -> Text("실제 센서 수집 중 · 속도 ${current.samples}개\n${current.status}")
             is EvaluationState.Unavailable -> Text(current.message)

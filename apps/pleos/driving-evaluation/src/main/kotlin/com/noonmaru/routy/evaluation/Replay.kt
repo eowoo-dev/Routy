@@ -30,6 +30,18 @@ object ExampleDrive {
 }
 
 fun main(args: Array<String>) {
+    if ("--environment" in args) {
+        val index=args.indexOf("--environment")
+        require(index+1<args.size)
+        val frames=EnvironmentEvaluation.decode(java.io.File(args[index+1]).readText())
+        val report=EnvironmentEvaluation.evaluate(frames)
+        val output=mapOf("source" to report.source,"frames" to report.frames,"excluded" to report.excluded,
+            "events" to report.events.map { mapOf("kind" to it.kind,"startMs" to it.startMs,"endMs" to it.endMs,"detail" to it.detail) })
+        val json=JsonDocuments.write(output)
+        println(json)
+        if("--output" in args) java.io.File(args[args.indexOf("--output")+1]).also { it.parentFile?.mkdirs() }.writeText(json)
+        return
+    }
     fun option(name: String): String? = args.indexOf(name).takeIf { it >= 0 }?.let { index ->
         require(index + 1 < args.size) { "Missing value for $name" }; args[index + 1]
     }

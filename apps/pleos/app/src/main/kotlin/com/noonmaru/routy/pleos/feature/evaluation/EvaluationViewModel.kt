@@ -32,6 +32,7 @@ sealed interface EvaluationState {
     data class Recording(val samples: Int, val status: String) : EvaluationState
     data class Finished(val report: EvaluationReport, val detail: String) : EvaluationState
     data class Unavailable(val message: String) : EvaluationState
+    data class EnvironmentFinished(val result: EnvironmentResult) : EvaluationState
 }
 
 /** Short, foreground-only acquisition check. Not a background trip recorder. */
@@ -47,6 +48,28 @@ class EvaluationViewModel(application: Application) : AndroidViewModel(applicati
     private var capture: Capture? = null
     private var deadline: Job? = null
     private var generation = 0L
+
+    fun analyzeEnvironment() {
+        if (!com.noonmaru.routy.pleos.BuildConfig.DEBUG) return
+        cancelCapture()
+        val requestedGeneration=generation
+        viewModelScope.launch {
+            try {
+                val result=withContext(Dispatchers.IO) {
+                    val connection=java.net.URL("http://127.0.0.1:8090/routy/trace").openConnection() as java.net.HttpURLConnection
+                    connection.connectTimeout=3000; connection.readTimeout=3000
+                    val text=try { connection.inputStream.bufferedReader().use { it.readText() } } finally { connection.disconnect() }
+                    val frames=EnvironmentEvaluation.decode(text)
+                    require(frames.isNotEmpty()) { "환경 관측이 없습니다" }
+                    File(getApplication<Application>().filesDir,"environment-trace.json").writeText(text)
+                    EnvironmentEvaluation.evaluate(frames)
+                }
+                if(generation==requestedGeneration) mutableState.value=EvaluationState.EnvironmentFinished(result)
+            } catch(e: Exception) {
+                if(generation==requestedGeneration) mutableState.value=EvaluationState.Unavailable("가상 환경 수집 실패: ${e.message}")
+            }
+        }
+    }
 
     fun replayExample() {
         cancelCapture()
