@@ -34,8 +34,9 @@ object TraceReplay {
 
     fun session(document: JsonObject): DrivingSession {
         val legacy = document.string("engineVersion") == "0.3.0" && document.string("ruleVersion") == "experimental-0.3"
-        val current = document.string("engineVersion") in setOf("0.4.0","0.5.0") && document.string("ruleVersion") == EvaluationConfig().ruleVersion
+        val current = document.string("engineVersion") in setOf("0.4.0","0.5.0","0.6.0") && document.string("ruleVersion") == EvaluationConfig().ruleVersion
         require(legacy || current) { "Unsupported captured engine/rule pair; an explicit migration is required" }
+        if(document.string("engineVersion")=="0.6.0") require(document.string("environmentRuleVersion")=="environment-0.2") { "Unsupported environment rule version" }
         if (current) {
             require(document.string("configSignature") == EvaluationConfig().toString()) { "Custom evaluation config requires explicit replay support" }
             require(document.string("practiceConfigSignature") == PracticeConfig().toString()) { "Custom practice config requires explicit replay support" }
@@ -65,7 +66,8 @@ object TraceReplay {
             positionTimeBasis=if (current) SteeringTimeBasis.valueOf(document.string("positionTimeBasis")) else SteeringTimeBasis.UNKNOWN,
             roadNetwork=if (current) document["roadNetwork"]?.jsonObject()?.let(PracticeCodec::network) else null,
             hazardStateKnown=if (current) document.boolean("hazardStateKnown") else true,
-            environment=if(document.string("engineVersion")=="0.5.0") EnvironmentIntegration.decode(document.objects("environment")) else emptyList(),
+            environment=if(document.string("engineVersion") in setOf("0.5.0","0.6.0")) EnvironmentIntegration.decode(document.objects("environment")) else emptyList(),
+            environmentRuleVersion=if(document.string("engineVersion")=="0.5.0") "environment-0.1" else "environment-0.2",
             signalSemantics=if (current) SignalSemantics.valueOf(document.string("signalSemantics")) else SignalSemantics.UNKNOWN,
             turnDetectionComplete=if (current) document.boolean("turnDetectionComplete") else false,
             signals=if (current) document.objects("signals").map { Observation(it.long("atMs"),it["value"]?.let { v -> SignalSelection.valueOf(v as String) },it.boolean("available")) } else emptyList(),
@@ -83,7 +85,7 @@ object TraceReplay {
 
     fun verifyCaptured(document: JsonObject, report: EvaluationReport) {
         check(report.contextFindings == capturedContexts(document)) { "Replayed context results differ from the captured results" }
-        if (document.string("engineVersion") in setOf("0.4.0","0.5.0")) {
+        if (document.string("engineVersion") in setOf("0.4.0","0.5.0","0.6.0")) {
             val actual = JsonDocuments.read(JsonDocuments.write(summary(report))) - "origin"
             check(document["analysis"].jsonObject()-"origin" == actual) { "Replayed practice, quality, feedback or event results differ from the captured results" }
         }
@@ -108,7 +110,8 @@ object TraceReplay {
             "readings" to session.telemetry.map { mapOf("signal" to it.signal,"atMs" to it.atMs,"kind" to it.kind.name,"number" to it.number,"flag" to it.flag,"state" to it.state,"fields" to it.fields,"available" to it.available,"providerTimestampMs" to it.providerTimestampMs) },
             "availability" to session.sensorAvailability.map { mapOf("signal" to it.signal,"access" to it.access.name,"detail" to it.detail) },
             "contextFindings" to summary(report)["contextFindings"],"analysis" to summary(report)) +
-            (if(session.environment.isEmpty()) emptyMap() else mapOf("environment" to EnvironmentIntegration.encode(session.environment)))
+            (if(session.environment.isEmpty()) emptyMap() else mapOf("environment" to EnvironmentIntegration.encode(session.environment))) +
+            (if(report.engineVersion=="0.6.0") mapOf("environmentRuleVersion" to session.environmentRuleVersion) else emptyMap())
     }
 
     fun summary(report: EvaluationReport): JsonObject = mapOf(

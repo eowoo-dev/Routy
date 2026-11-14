@@ -11,6 +11,10 @@ data class EnvironmentEvent(val kind: String, val startMs: Long, val endMs: Long
     val feedback: String get() = when(kind) {
         "LANE_CHANGE_LEFT" -> "왼쪽 차로로 이동한 뒤 안정됐어요"
         "LANE_CHANGE_RIGHT" -> "오른쪽 차로로 이동한 뒤 안정됐어요"
+        "MULTI_LANE_CHANGE_LEFT", "MULTI_LANE_CHANGE_RIGHT" -> "여러 차로를 연속해서 가로질렀어요. 한 차로씩 안정하는 연습을 해보세요"
+        "LANE_BOUNDARY_INTRUSION" -> "차체가 차로 경계를 침범한 상태가 이어졌어요"
+        "LEAD_VEHICLE_CUT_IN" -> "옆 차로 차량이 앞쪽으로 들어와 간격이 줄었어요"
+        "VEHICLE_BODY_OVERLAP" -> "가상 환경에서 차체 영역의 겹침이 관측됐어요. 실제 사고 판정은 아닙니다"
         "LANE_CHANGE_RETURNED" -> "차로 경계를 넘었다가 원래 차로로 돌아왔어요"
         "INCOMPLETE_LANE_CHANGE" -> "관측이 끝나 차로 변경 완료 여부를 확인하지 못했어요"
         "LANE_BOUNDARY_APPROACH" -> "차로 경계에 가까운 상태가 이어졌어요. 좌우 여유를 확인해보세요"
@@ -56,19 +60,26 @@ object EnvironmentEvaluation {
         var changeStart: Long? = null
         var originalSignal = "UNKNOWN"
         var signalSince: Long? = null
+        var preparationSince: Long? = null
+        val changeSignals=linkedSetOf<String>()
         var excluded = 0
         var leaderId: String? = null
         val episodes = mutableMapOf<String, Pair<Long, Long>>()
         fun finish(key: String) {
-            episodes.remove(key)?.let { (start,end) -> if(end-start >= 500) events += EnvironmentEvent(key,start,end,"SIMULATED_ENVIRONMENT") }
+            episodes.remove(key)?.let { (start,end) -> if(end-start >= (if(key=="VEHICLE_BODY_OVERLAP") 0 else 500)) events += EnvironmentEvent(key,start,end,"SIMULATED_ENVIRONMENT") }
         }
         fun episode(key: String, active: Boolean, at: Long) {
             if(active) episodes[key] = (episodes[key]?.first ?: at) to at else finish(key)
         }
         fun reset() {
             episodes.keys.toList().forEach(::finish)
-            changeStart?.let { events += EnvironmentEvent("INCOMPLETE_LANE_CHANGE",it,previous?.atMs ?: it,"observation discontinuity") }
+            changeStart?.let {
+                val end=previous?.atMs ?: it
+                events += EnvironmentEvent("INCOMPLETE_LANE_CHANGE",it,end,"observation discontinuity")
+                if(end-it>=500) events += EnvironmentEvent("LANE_BOUNDARY_INTRUSION",it,end,"observed boundary intrusion; completion unknown")
+            }
             lane=null; target=null; changeStart=null; signalSince=null; settle=0; leaderId=null
+            preparationSince=null;changeSignals.clear()
         }
         for(f in frames) {
             val p=previous
@@ -82,23 +93,31 @@ object EnvironmentEvaluation {
             val inside=abs(f.d-currentLane*3.7)+halfWidth <= 1.85-.1
             if(lane==null && inside) lane=currentLane
             if(p==null || p.signal!=f.signal || !continuous) signalSince=f.atMs
+            // Preserve interruptions even while a pending maneuver temporarily stops moving.
+            if(changeStart!=null) changeSignals+=f.signal
             val base=lane
             if(base!=null && f.speed>1) {
                 val crosses=abs(f.d-base*3.7)+halfWidth>1.85
-                if(crosses && changeStart==null) { changeStart=f.atMs; originalSignal=f.signal; target=null }
+                if(crosses && changeStart==null) {
+                    changeStart=f.atMs; originalSignal=f.signal; target=null
+                    preparationSince=signalSince;changeSignals.clear();changeSignals+=f.signal
+                }
                 if(changeStart!=null) {
                     if(currentLane!=base && inside) {
                         if(target!=currentLane) { target=currentLane; settle=f.atMs }
                         if(f.atMs-settle>=1000) {
                             val direction=if(currentLane>base) "LEFT" else "RIGHT"
                             val start=changeStart!!
-                            events += EnvironmentEvent("LANE_CHANGE_$direction",start,f.atMs,"$base -> $currentLane")
+                            val kind=if(abs(currentLane-base)>1) "MULTI_LANE_CHANGE_$direction" else "LANE_CHANGE_$direction"
+                            events += EnvironmentEvent(kind,start,f.atMs,"$base -> $currentLane")
+                            val opposite=if(direction=="LEFT") "RIGHT" else "LEFT"
                             val usage=when {
-                                originalSignal=="UNKNOWN" || f.signal=="UNKNOWN" -> "LANE_CHANGE_SIGNAL_UNAVAILABLE"
-                                originalSignal=="OFF" -> "MISSING_LANE_CHANGE_SIGNAL"
-                                originalSignal!=direction -> "OPPOSITE_LANE_CHANGE_SIGNAL"
-                                f.signal!=direction -> "INTERRUPTED_LANE_CHANGE_SIGNAL"
-                                (signalSince ?: start)>start-3000 -> "LATE_LANE_CHANGE_SIGNAL"
+                                "UNKNOWN" in changeSignals -> "LANE_CHANGE_SIGNAL_UNAVAILABLE"
+                                opposite in changeSignals -> "OPPOSITE_LANE_CHANGE_SIGNAL"
+                                originalSignal=="OFF" && direction !in changeSignals -> "MISSING_LANE_CHANGE_SIGNAL"
+                                originalSignal=="OFF" -> "LATE_LANE_CHANGE_SIGNAL"
+                                "OFF" in changeSignals -> "INTERRUPTED_LANE_CHANGE_SIGNAL"
+                                (preparationSince ?: start)>start-3000 -> "LATE_LANE_CHANGE_SIGNAL"
                                 else -> "LANE_CHANGE_SIGNAL_OBSERVED"
                             }
                             events += EnvironmentEvent(usage,start,f.atMs,"experimental preparation interval 3000ms")
@@ -108,6 +127,7 @@ object EnvironmentEvaluation {
                         target=null
                         if(currentLane==base && inside) {
                             events += EnvironmentEvent("LANE_CHANGE_RETURNED",changeStart!!,f.atMs,"boundary excursion followed by return")
+                            if(f.atMs-changeStart!!>=500) events += EnvironmentEvent("LANE_BOUNDARY_INTRUSION",changeStart!!,f.atMs,"boundary crossing followed by return; cause unknown")
                             changeStart=null
                         }
                     }
@@ -115,9 +135,16 @@ object EnvironmentEvaluation {
                 episode("LANE_BOUNDARY_APPROACH",changeStart==null && 1.85-abs(f.d-base*3.7)-halfWidth<.25,f.atMs)
             } else episode("LANE_BOUNDARY_APPROACH",false,f.atMs)
             val leader=f.vehicles.filter { it.s>f.s && abs(it.d-f.d)<(it.width+1.8)/2 }.minByOrNull { it.s }
-            if(leader?.id!=leaderId) { finish("SHORT_FOLLOWING_HEADWAY"); finish("LOW_CLOSING_TTC"); leaderId=leader?.id }
+            if(leader?.id!=leaderId) {
+                finish("SHORT_FOLLOWING_HEADWAY"); finish("LOW_CLOSING_TTC");finish("VEHICLE_BODY_OVERLAP")
+                val prior=if(continuous) p.vehicles.firstOrNull { it.id==leader?.id } else null
+                if(p!=null && prior!=null && leader!=null && abs(prior.d-p.d)>=(prior.width+1.8)/2)
+                    events += EnvironmentEvent("LEAD_VEHICLE_CUT_IN",p.atMs,f.atMs,"object=${leader.id}; responsibility unknown")
+                leaderId=leader?.id
+            }
             val gap=leader?.let { it.s-f.s-(it.length+4.8)/2 }
             val closing=leader?.let { f.speed-it.speed }
+            episode("VEHICLE_BODY_OVERLAP",gap!=null && gap<=0,f.atMs)
             episode("SHORT_FOLLOWING_HEADWAY",gap!=null && gap>0 && f.speed>1 && gap/f.speed<1.5,f.atMs)
             episode("LOW_CLOSING_TTC",gap!=null && gap>0 && closing!=null && closing>.1 && gap/closing<3,f.atMs)
             if(continuous && p.s+2.4 < f.stopLineS && f.s+2.4>=f.stopLineS && p.stopLineS==f.stopLineS) {

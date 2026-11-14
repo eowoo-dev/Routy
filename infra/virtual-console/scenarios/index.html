@@ -12,7 +12,7 @@
 <header><div><div class="eyebrow">ROUTY · 개발용 시연</div><h1>주행 시나리오 콘솔</h1><p>같은 입력으로 장면을 실행하고 평가 근거를 확인합니다.</p></div><span class="badge">합성 환경 · SDK 차량 제어 없음</span></header>
 <main><section class="panel" aria-labelledby="control-title"><h2 id="control-title">시나리오 실행</h2>
 <label for="scenario">시나리오 선택</label><select id="scenario"><option value="">선택하세요</option></select>
-<p id="description">네 가지 독립 시나리오를 제공합니다.</p>
+<p id="description">기본·실패·경계 시나리오를 선택하세요.</p>
 <div class="controls"><button class="primary" id="start" disabled>시작</button><button id="stop" disabled>정지</button><button id="reset" disabled>초기화</button></div>
 <p class="hint">정지 후 시작하면 이어서 실행합니다. 초기화하면 처음부터 새 기록을 만듭니다.</p>
 <p id="status" role="status" aria-live="polite">연결 중</p><progress id="progress" value="0" max="1" aria-label="시나리오 진행률"></progress>
@@ -20,6 +20,6 @@
 <p id="error" class="error" role="alert"></p><button id="release">수동 환경으로 전환</button><p class="hint"><a href="/">기존 Virtual Console 열기</a></p>
 </section><div><section class="panel scene" aria-labelledby="scene-title"><header><h2 id="scene-title">동일 환경 프레임의 주행 장면</h2><div class="controls"><button id="third" aria-pressed="true">3인칭</button><button id="first" aria-pressed="false">1인칭</button></div></header>
 <canvas id="highwayRoad" role="img" aria-label="시뮬레이션 차로와 자차·선행차·신호·정지선"></canvas><p id="render-status" role="status">3D 화면 준비 중</p>
-<div class="metrics"><div>프레임 속도<strong id="speed">0 km/h</strong></div><div>횡위치 · 왼쪽 +<strong id="lateral">0.00 m</strong></div><div>신호<strong id="light">—</strong></div><div>앞 범퍼→정지선<strong id="line">—</strong></div><div>앞차 간격<strong id="gap">—</strong></div><div>시간 간격<strong id="headway">—</strong></div><div>접근 TTC<strong id="ttc">—</strong></div></div></section>
+<div class="metrics"><div>프레임 속도<strong id="speed">0 km/h</strong></div><div>횡위치 · 왼쪽 +<strong id="lateral">0.00 m</strong></div><div>방향지시등<strong id="indicator">—</strong></div><div>교통 신호<strong id="light">—</strong></div><div>앞 범퍼→정지선<strong id="line">—</strong></div><div>앞차 간격<strong id="gap">—</strong></div><div>시간 간격<strong id="headway">—</strong></div><div>접근 TTC<strong id="ttc">—</strong></div></div></section>
 <section class="panel checks"><h2>자동 검증</h2><p>완료 시 입력 궤적의 기하 조건을 검사합니다. Kotlin 평가 엔진의 이벤트 검증은 아래 자동화 명령으로 실행합니다.</p><ul id="checks"><li>실행 완료 후 결과가 표시됩니다.</li></ul><p class="hint">기대 검출 <span id="expected">—</span></p><a id="trace" href="/routy/trace?download=1" download="environment-trace.json">현재 원시 기록 다운로드</a><p class="hint"><code>.\infra\pleos\test-environment-scenarios.ps1</code></p></section></div></main>
 <script type="module" src="/routy/scenario-page.mjs"></script></body></html>

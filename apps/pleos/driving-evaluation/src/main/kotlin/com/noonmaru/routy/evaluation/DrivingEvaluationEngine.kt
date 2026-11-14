@@ -36,7 +36,9 @@ class DrivingEvaluationEngine(private val config: EvaluationConfig = EvaluationC
         val (turnMetrics, turnAssessment) = evaluateTurns(session, signals, events)
         val (steeringMetrics, steeringAssessment) = evaluateSteering(session, config, events)
         val environmentFrames=EnvironmentIntegration.frames(session)
-        val environmentResult=if(session.environment.isEmpty()) null else EnvironmentEvaluation.evaluate(environmentFrames)
+        require(session.environmentRuleVersion in setOf("environment-0.1","environment-0.2")) { "Unsupported environment rules" }
+        val environmentResult=if(session.environment.isEmpty()) null else if(session.environmentRuleVersion=="environment-0.1")
+            LegacyEnvironmentEvaluation.evaluate(environmentFrames) else EnvironmentEvaluation.evaluate(environmentFrames)
         val deferred = if(environmentResult!=null) EnvironmentIntegration.assess(session,environmentFrames,environmentResult) else listOf(Category.LANE_KEEPING, Category.TRAFFIC_SIGNAL_RESPONSE, Category.FOLLOWING_DISTANCE)
             .map { Assessment(it, AssessmentStatus.NOT_ASSESSED, excludedMs = session.durationMs,
                 reasons = setOf(ExclusionReason.ENVIRONMENT_DATA_REQUIRED, ExclusionReason.RULE_NOT_IMPLEMENTED)) }
@@ -54,7 +56,7 @@ class DrivingEvaluationEngine(private val config: EvaluationConfig = EvaluationC
             ChannelQuality("steeringInput",steeringAssessment.eligibleMs,session.durationMs,session.steeringAngles.size,steeringAssessment.reasons.map { it.name }.toSet()),
             ChannelQuality("turnSignalSelection",signalEligible,session.durationMs,session.signals.size,signalReasons))
         val enrichedPractice = practice.copy(quality=quality)
-        return EvaluationReport(if(environmentResult==null) "0.4.0" else "0.5.0", config, session.origin, session.startMs, session.endMs,
+        return EvaluationReport(if(environmentResult==null) "0.4.0" else if(session.environmentRuleVersion=="environment-0.1") "0.5.0" else "0.6.0", config, session.origin, session.startMs, session.endMs,
             listOf(speedAssessment, motionAssessment, turnAssessment, steeringAssessment) + deferred,
             speedMetrics, motionMetrics, turnMetrics,
             orderedEvents, steeringMetrics,

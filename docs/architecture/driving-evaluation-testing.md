@@ -20,6 +20,22 @@
 | red-stop | STOPPED_BEFORE_RED | 적색 정지선 앞 0~5m에서 정차, 통과 없음 |
 | following-gap | SHORT_FOLLOWING_HEADWAY, LOW_CLOSING_TTC | 앞차 간격 감소, 범퍼 간 거리 양수 유지 |
 
+추가 실패·경계 사례는 총 9개입니다. 모두 독립 실행·기하 검사·필수/금지 이벤트 검사·제외 프레임 0개·재평가 일치를 확인합니다.
+
+| ID | 핵심 기대 결과 |
+|---|---|
+| lane-change-right | 오른쪽 변경 완료, 유지 침범 중복 없음 |
+| lane-change-no-signal | 방향지시등 미사용 |
+| lane-change-interrupted | LEFT→OFF→LEFT를 중간 해제로 검출, 정상/늦은 사용 금지 |
+| lane-change-opposite | 일시적 반대 신호를 복원 후에도 기억 |
+| lane-change-unknown | 일시적 관측 불가에서 신호 사용 평가 보류 |
+| lane-return | 차체 경계 침범과 원래 차로 복귀, 변경 완료 금지 |
+| red-cross | 적색 정지선 통과, 정지 성공 금지 |
+| lead-cut-in | 끼어들기 맥락과 시간 간격/TTC, 운전자 책임 단정 없음 |
+| vehicle-overlap | 전방 차체 영역 겹침을 별도 관측, 유효 THW/TTC로 환산 금지 |
+
+JVM 단위 테스트는 추가로 연속 다차로 변경, 앞차 ID 교체 전후의 짧은 이벤트 합치기 금지, 신호 전환과 정지선 통과가 겹치는 경우, 변경 완료와 차로 유지 침범의 중복 방지도 검사합니다. 새 규칙은 엔진 0.6.0 / environment-0.2이며 0.5.0 기록의 판정은 동결된 이전 평가기로 재생합니다.
+
 검사는 각 시나리오의 금지 이벤트·제외 프레임 0개·같은 입력의 재평가 일치도 확인합니다. 결과 JSON은 `apps/pleos/driving-evaluation/build/reports/environment-scenarios.json`에 생성합니다. 기존 SDK 테스트와 병행하려면 시나리오 화면에서 ‘수동 환경으로 전환’으로 환경 제어권을 해제하세요.
 
 ```powershell
@@ -44,7 +60,7 @@
 - Python과 Docker 실행 환경. 스크립트에는 외부 Python 패키지가 필요하지 않습니다.
 - 에뮬레이터 테스트 중에는 별도 수집이나 Virtual Console 입력을 동시에 시작하지 않습니다.
 
-`-Environment`는 Docker의 `virtual-console` 서비스와 `adb reverse tcp:8090 tcp:8090`도 필요합니다. 최신 `install-windows.ps1`이 역방향 포트를 설정합니다. 테스트 실행기가 차량 제어를 단독으로 맡고 같은 입력 상태를 환경 모델에 공급하므로 브라우저 없이 검사합니다. 최소 50개 환경 관측, 시각·출처·순번, 세 환경 카테고리의 유효 구간을 검사하고 0.5.0 통합 보고서를 저장합니다. 환경이 없는 0.3/0.4 기록은 기존 경로로 재생합니다. 에뮬레이터 입력 검증과 실제 3D 화면 확인은 별개입니다.
+`-Environment`는 Docker의 `virtual-console` 서비스와 `adb reverse tcp:8090 tcp:8090`도 필요합니다. 최신 `install-windows.ps1`이 역방향 포트를 설정합니다. 테스트 실행기가 차량 제어를 단독으로 맡고 같은 입력 상태를 환경 모델에 공급하므로 브라우저 없이 검사합니다. 최소 50개 환경 관측, 시각·출처·순번, 세 환경 카테고리의 유효 구간을 검사하고 새 APK의 0.6.0 통합 보고서를 저장합니다. 기존 0.5.0 기록은 동결된 이전 환경 규칙으로, 환경이 없는 0.3/0.4 기록은 기존 경로로 재생합니다. 에뮬레이터 입력 검증과 실제 3D 화면 확인은 별개입니다.
 
 ADB 식별자를 바꾸려면 `-Serial emulator-5556`을 전달합니다. 개별 에뮬레이터 실행은 `python -X utf8 infra/pleos/emulator_scenarios.py --serial emulator-5554`로도 가능합니다. 물리 Android 기기의 ADB 식별자는 받지 않습니다.
 

@@ -51,8 +51,8 @@ def require_sole_console_writer(lease):
 def verify_environment_trace(trace):
     rows = trace.get("environment", [])
     errors = []
-    if trace.get("engineVersion") != "0.5.0" or len(rows) < 50:
-        errors.append("Expected an integrated 0.5.0 trace with at least 50 environment observations")
+    if trace.get("engineVersion") != "0.6.0" or len(rows) < 50:
+        errors.append("Expected an integrated 0.6.0 trace with at least 50 environment observations")
     if any(not trace["startMs"] <= row["sessionAtMs"] <= trace["endMs"] or row.get("serverAtMs") is None or row["frame"].get("source") != "SIMULATED_ENVIRONMENT" for row in rows):
         errors.append("Environment provenance or aligned timestamps are invalid")
     keys = [(row["frame"].get("runId"), row["frame"].get("sequence")) for row in rows]

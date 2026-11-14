@@ -39,7 +39,7 @@ object EnvironmentIntegration {
         }
         return listOf(Category.LANE_KEEPING,Category.TRAFFIC_SIGNAL_RESPONSE,Category.FOLLOWING_DISTANCE).map { category ->
             val eligible=intervals.sumOf { (a,b) ->
-                if(category==Category.LANE_KEEPING && result.events.any { it.kind in setOf("LANE_CHANGE_LEFT","LANE_CHANGE_RIGHT") && it.startMs<b.atMs && it.endMs>a.atMs }) 0L else b.atMs-a.atMs
+                if(category==Category.LANE_KEEPING && result.events.any { it.kind in setOf("LANE_CHANGE_LEFT","LANE_CHANGE_RIGHT","MULTI_LANE_CHANGE_LEFT","MULTI_LANE_CHANGE_RIGHT") && it.startMs<b.atMs && it.endMs>a.atMs }) 0L else b.atMs-a.atMs
             }.coerceAtMost(session.durationMs)
             val hasOpportunity=when(category) {
                 Category.FOLLOWING_DISTANCE -> frames.any { f -> f.available && f.vehicles.any { it.s>f.s && kotlin.math.abs(it.d-f.d)<(it.width+1.8)/2 } }

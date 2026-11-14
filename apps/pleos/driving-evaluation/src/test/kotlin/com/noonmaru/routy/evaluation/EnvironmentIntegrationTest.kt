@@ -18,7 +18,7 @@ class EnvironmentIntegrationTest {
     @Test fun integratedReportAndCompleteTraceRoundTrip() {
         val input=session()
         val report=DrivingEvaluationEngine().evaluate(input)
-        assertEquals("0.5.0",report.engineVersion)
+        assertEquals("0.6.0",report.engineVersion)
         assertNotNull(report.environment)
         assertTrue(report.assessments.first { it.category==Category.LANE_KEEPING }.eligibleMs>0)
         val document=JsonDocuments.read(JsonDocuments.write(TraceReplay.recording(input,report)))
@@ -44,5 +44,14 @@ class EnvironmentIntegrationTest {
         val missing=Observation<Double>(first.atMs+1,null,false)
         val frames=EnvironmentIntegration.frames(input.copy(speeds=listOf(first,missing)))
         assertTrue(frames.drop(1).none { it.available })
+    }
+    @Test fun legacyEnvironmentRulesArePreservedInCapturedReplay() {
+        val input=session().copy(environmentRuleVersion="environment-0.1")
+        val engine=DrivingEvaluationEngine(); val report=engine.evaluate(input)
+        assertEquals("0.5.0",report.engineVersion)
+        val document=JsonDocuments.read(JsonDocuments.write(TraceReplay.recording(input,report)))
+        val restored=TraceReplay.session(document)
+        assertEquals("environment-0.1",restored.environmentRuleVersion)
+        TraceReplay.verifyCaptured(document,engine.evaluate(restored))
     }
 }

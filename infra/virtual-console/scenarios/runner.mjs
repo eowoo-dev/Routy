@@ -10,6 +10,15 @@ export const scenarios = [
     expected: ['STOPPED_BEFORE_RED'], forbidden: ['STOP_LINE_CROSSING_RED','STOP_LINE_CROSSING_GREEN','STOP_LINE_CROSSING_YELLOW'] },
   { id: 'following-gap', title: '앞차 간격 감소', description: '같은 차로의 느린 앞차에 접근해 시간 간격과 TTC를 관측합니다.', durationMs: 10000,
     expected: ['SHORT_FOLLOWING_HEADWAY','LOW_CLOSING_TTC'], forbidden: ['LANE_CHANGE_LEFT','LANE_CHANGE_RIGHT','STOP_LINE_CROSSING_RED'] },
+  { id:'lane-change-right',base:'lane-change',title:'정상 오른쪽 변경',description:'오른쪽 차로에서 안정합니다.',durationMs:12000,expected:['LANE_CHANGE_RIGHT','LANE_CHANGE_SIGNAL_OBSERVED'],forbidden:['LANE_CHANGE_LEFT','LANE_BOUNDARY_INTRUSION'] },
+  { id:'lane-change-no-signal',base:'lane-change',title:'방향지시등 미사용',description:'신호 없이 변경합니다.',durationMs:12000,expected:['LANE_CHANGE_LEFT','MISSING_LANE_CHANGE_SIGNAL'],forbidden:['LANE_CHANGE_SIGNAL_OBSERVED'] },
+  { id:'lane-change-interrupted',base:'lane-change',title:'중간 해제 후 재점등',description:'변경 중 방향지시등을 껐다 다시 켭니다.',durationMs:12000,expected:['LANE_CHANGE_LEFT','INTERRUPTED_LANE_CHANGE_SIGNAL'],forbidden:['LANE_CHANGE_SIGNAL_OBSERVED','LATE_LANE_CHANGE_SIGNAL'] },
+  { id:'lane-change-opposite',base:'lane-change',title:'반대 신호 후 복원',description:'변경 중 잠깐 반대 신호를 선택합니다.',durationMs:12000,expected:['LANE_CHANGE_LEFT','OPPOSITE_LANE_CHANGE_SIGNAL'],forbidden:['LANE_CHANGE_SIGNAL_OBSERVED'] },
+  { id:'lane-change-unknown',base:'lane-change',title:'신호 관측 단절',description:'변경 중 신호 상태가 일시적으로 관측되지 않습니다.',durationMs:12000,expected:['LANE_CHANGE_LEFT','LANE_CHANGE_SIGNAL_UNAVAILABLE'],forbidden:['LANE_CHANGE_SIGNAL_OBSERVED','MISSING_LANE_CHANGE_SIGNAL'] },
+  { id:'lane-return',title:'차선 침범 후 복귀',description:'차체 일부가 경계를 넘었다가 원래 차로로 돌아옵니다.',durationMs:12000,expected:['LANE_CHANGE_RETURNED','LANE_BOUNDARY_INTRUSION'],forbidden:['LANE_CHANGE_LEFT','LANE_CHANGE_RIGHT'] },
+  { id:'red-cross',title:'적색 정지선 통과',description:'적색에서 정지선을 통과하는 실패 사례입니다.',durationMs:10000,expected:['STOP_LINE_CROSSING_RED'],forbidden:['STOPPED_BEFORE_RED','STOP_LINE_CROSSING_GREEN'] },
+  { id:'lead-cut-in',title:'앞차 끼어들기',description:'옆 차로의 느린 차량이 앞쪽으로 들어옵니다.',durationMs:6000,expected:['LEAD_VEHICLE_CUT_IN','SHORT_FOLLOWING_HEADWAY','LOW_CLOSING_TTC'],forbidden:['VEHICLE_BODY_OVERLAP'] },
+  { id:'vehicle-overlap',title:'차체 영역 겹침',description:'가상 차체 영역이 겹치는 경계 사례입니다. 실제 사고 판정이 아닙니다.',durationMs:2000,expected:['VEHICLE_BODY_OVERLAP'],forbidden:['SHORT_FOLLOWING_HEADWAY','LOW_CLOSING_TTC'] },
 ];
 
 // Quintic reference is an environment trajectory, never a precomputed evaluation event.
@@ -20,10 +29,12 @@ function transition(t, start, duration, amount) {
     acceleration:amount*(60*u-180*u**2+120*u**3)/duration**2 };
 }
 function control(id, t, model) {
+  const base=scenarios.find(s=>s.id===id)?.base ?? id;
   let target={d:0,velocity:0,acceleration:0};
-  if(id==='lane-change') target=transition(t,4,4,3.7);
-  if(id==='lane-boundary') {
-    const rise=transition(t,2,2,.8),fall=transition(t,8,2,.8);
+  if(base==='lane-change') target=transition(t,4,4,id==='lane-change-right'?-3.7:3.7);
+  if(base==='lane-boundary' || base==='lane-return') {
+    const amount=base==='lane-return'?1.4:.8;
+    const rise=transition(t,2,2,amount),fall=transition(t,8,2,amount);
     target={d:rise.d-fall.d,velocity:rise.velocity-fall.velocity,acceleration:rise.acceleration-fall.acceleration};
   }
   const speed=id==='red-stop' ? (t<4 ? 10 : t<9 ? 10-2*(t-4) : 0) : 10;
@@ -31,9 +42,18 @@ function control(id, t, model) {
   const desired=Math.asin(Math.max(-.5,Math.min(.5,target.velocity/Math.max(speed,1))));
   const rate=target.acceleration/Math.max(1,speed*Math.cos(desired))+2*(desired-model.heading)+.5*(target.d-centerD);
   const steeringDeg=speed>0 ? Math.atan(rate*2.8/speed)*15*180/Math.PI : 0;
-  return {speed,steeringDeg,signal:id==='lane-change' && t>=.5 ? 'LEFT':'OFF',
-    light:id==='red-stop' ? 'RED':'GREEN', stopLineS:id==='red-stop' ? 70 : 1000,
-    vehicles:id==='following-gap' ? [{id:'lead',s:48+6*t,d:0,speed:6}] : []};
+  let signal=base==='lane-change' && t>=.5 ? (id==='lane-change-right'?'RIGHT':'LEFT'):'OFF';
+  if(id==='lane-change-no-signal') signal='OFF';
+  if(t>=6 && t<6.5) {
+    if(id==='lane-change-interrupted') signal='OFF';
+    if(id==='lane-change-opposite') signal='RIGHT';
+    if(id==='lane-change-unknown') signal='UNKNOWN';
+  }
+  let vehicles=id==='following-gap' ? [{id:'lead',s:48+6*t,d:0,speed:6}] : [];
+  if(id==='lead-cut-in') vehicles=[{id:'cut-in',s:32+6*t,d:3.7-transition(t,2,1,3.7).d,speed:6}];
+  if(id==='vehicle-overlap') vehicles=[{id:'stationary',s:8,d:0,speed:0}];
+  return {speed,steeringDeg,signal,
+    light:id==='red-stop' || id==='red-cross' ? 'RED':'GREEN', stopLineS:id==='red-stop' || id==='red-cross' ? 70 : 1000,vehicles};
 }
 
 export class ScenarioRunner {
@@ -83,12 +103,17 @@ export function generateScenario(id) {
 
 export function verifyGeometry(id, frames) {
   const last=frames.at(-1), definition=scenarios.find(s=>s.id===id);
+  const base=definition.base ?? id;
   const check=(label,passed)=>({label,passed:Boolean(passed)});
   const common=[check('끝까지 실행',last?.atMs===definition.durationMs),
     check('연속된 프레임',frames.length===definition.durationMs/50 && frames[0]?.atMs===50 && frames.every((f,i)=>f.available && Number.isFinite(f.d) && Math.abs(f.d)<5.55 && f.sequence===i+1 && (i===0 || f.atMs-frames[i-1].atMs===50)))];
-  if(id==='lane-change') return [...common,check('왼쪽 차로에서 안정',frames.filter(f=>f.atMs>=10000).every(f=>Math.abs(f.d-3.7)<.1 && Math.abs(f.heading)<.02))];
+  if(base==='lane-change') return [...common,check('목표 차로에서 안정',frames.filter(f=>f.atMs>=10000).every(f=>Math.abs(f.d-(id==='lane-change-right'?-3.7:3.7))<.1 && Math.abs(f.heading)<.02))];
+  if(id==='lane-return') return [...common,check('경계 침범 후 복귀',Math.max(...frames.map(f=>f.d))>1.2 && Math.abs(last.d)<.05)];
   if(id==='lane-boundary') return [...common,check('경계 안에서 접근',Math.max(...frames.map(f=>f.d))>.72 && frames.every(f=>Math.abs(f.d)+.9<1.85)),check('원래 차로 복귀',Math.abs(last.d)<.05)];
   if(id==='red-stop') return [...common,check('정지선 앞 정차',last.speed===0 && last.stopLineS-last.s-2.4>=0 && last.stopLineS-last.s-2.4<=5),check('적색 중 통과 없음',frames.every(f=>f.light==='RED' && f.s+2.4<f.stopLineS))];
+  if(id==='red-cross') return [...common,check('적색 통과 입력',last.s+2.4>last.stopLineS && frames.every(f=>f.light==='RED'))];
   const gaps=frames.map(f=>f.vehicles[0].s-f.s-4.8);
+  if(id==='vehicle-overlap') return [...common,check('차체 겹침 입력',gaps.some(g=>g<0))];
+  if(id==='lead-cut-in') return [...common,check('옆 차로에서 진입',frames[0].vehicles[0].d>3 && last.vehicles[0].d===0),check('차체 겹침 없음',gaps.every(g=>g>0))];
   return [...common,check('간격 감소와 비접촉',gaps[0]>30 && gaps.at(-1)>0 && gaps.at(-1)<5)];
 }

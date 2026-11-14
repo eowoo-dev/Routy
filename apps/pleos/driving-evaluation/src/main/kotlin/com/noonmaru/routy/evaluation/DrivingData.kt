@@ -61,6 +61,7 @@ data class DrivingSession(
     /** SDK selection without observable hazards must not imply that hazards are OFF. */
     val hazardStateKnown: Boolean = true,
     val environment: List<AlignedEnvironmentFrame> = emptyList(),
+    val environmentRuleVersion: String = "environment-0.2",
 ) {
     init {
         require(startMs >= 0 && endMs > startMs) { "A session needs a positive monotonic time range." }

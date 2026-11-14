@@ -5,7 +5,7 @@ from emulator_scenarios import verify_environment_trace
 
 class EnvironmentOracleTest(unittest.TestCase):
     def fixture(self):
-        return {"engineVersion": "0.5.0", "startMs": 1000, "endMs": 8000,
+        return {"engineVersion": "0.6.0", "startMs": 1000, "endMs": 8000,
                 "environment": [{"sessionAtMs": 1000+i*100, "serverAtMs": i*100,
                                  "frame": {"source": "SIMULATED_ENVIRONMENT", "runId": "run", "sequence": i}} for i in range(50)],
                 "analysis": {"environment": {"source": "SIMULATED_ENVIRONMENT"},

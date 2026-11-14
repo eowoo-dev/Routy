@@ -13,7 +13,7 @@ function display(value) {
   const definition=Array.from($('scenario').options).find(o=>o.value===value.scenarioId);
   const info=value.scenarios?.find(s=>s.id===value.scenarioId);
   if(info) { $('description').textContent=info.description;$('expected').textContent=info.expected.join(', '); }
-  if(!definition || !value.scenarioId) {$('description').textContent='네 가지 독립 시나리오를 제공합니다.';$('expected').textContent='—';}
+  if(!definition || !value.scenarioId) {$('description').textContent='기본·실패·경계 시나리오를 선택하세요.';$('expected').textContent='—';}
   if($('status').textContent!==names[value.status]) $('status').textContent=names[value.status];
   $('scenario').disabled=pending || value.status==='running';
   $('start').disabled=pending || !['ready','stopped'].includes(value.status);
@@ -28,6 +28,7 @@ function display(value) {
   $('speed').textContent=`${((frame?.speed ?? 0)*3.6).toFixed(1)} km/h`;
   $('lateral').textContent=`${(frame?.d ?? 0).toFixed(2)} m`;
   $('light').textContent=({RED:'적색',GREEN:'녹색',YELLOW:'황색'})[frame?.light] ?? '—';
+  $('indicator').textContent=({OFF:'꺼짐',LEFT:'왼쪽',RIGHT:'오른쪽',UNKNOWN:'관측 불가'})[frame?.signal] ?? '—';
   $('line').textContent=frame?`${(frame.stopLineS-frame.s-2.4).toFixed(1)} m`:'—';
   const leader=frame?.vehicles.filter(v=>v.s>frame.s && Math.abs(v.d-frame.d)<(v.width+1.8)/2).sort((a,b)=>a.s-b.s)[0];
   const gap=leader ? leader.s-frame.s-(leader.length+4.8)/2 : null;

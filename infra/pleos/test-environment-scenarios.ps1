@@ -1,4 +1,4 @@
-param([ValidateSet('lane-change','lane-boundary','red-stop','following-gap')][string]$Scenario)
+param([ValidatePattern('^[a-z][a-z0-9-]*$')][string]$Scenario)
 $ErrorActionPreference='Stop'
 $rootPath=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 Push-Location $rootPath
