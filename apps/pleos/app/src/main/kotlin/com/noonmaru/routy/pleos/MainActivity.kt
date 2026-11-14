@@ -19,6 +19,7 @@ open class VehicleActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        com.noonmaru.routy.pleos.feature.trip.AutoRecording.armWhenVisible(this)
         RecordSync.schedule(applicationContext)
         try {
             vehicle = Vehicle(applicationContext).also { it.initialize() }

@@ -40,6 +40,7 @@ import java.util.Locale
 @Composable
 fun EvaluationPanel(model: EvaluationViewModel = viewModel()) {
     val state by model.state.collectAsStateWithLifecycle()
+    val autoEnabled by com.noonmaru.routy.pleos.feature.trip.AutoRecording.enabled.collectAsStateWithLifecycle()
     val scenarioStatus by model.scenarioStatus.collectAsStateWithLifecycle()
     val uploadStatus by model.uploadStatus.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -56,6 +57,7 @@ fun EvaluationPanel(model: EvaluationViewModel = viewModel()) {
         Text("주행 평가", style = MaterialTheme.typography.headlineMedium)
         Text("실험용 학습 지표입니다. 급격한 조작을 운전 실수로 확정하거나 종합 점수로 환산하지 않습니다.")
         Text(uploadStatus)
+        if(autoEnabled)Text("자동 기록을 끈 뒤 30초 진단 수집을 시작해주세요.")
         OutlinedButton(onClick=model::retryUploads,modifier=Modifier.heightIn(min=64.dp)) { Text("대기·확인 필요 기록 다시 전송") }
         Button(onClick = model::replayExample, enabled = state !is EvaluationState.Recording,
             modifier = Modifier.heightIn(min = 64.dp)) { Text("회전 감지·학습 피드백 합성 시연") }
@@ -66,7 +68,7 @@ fun EvaluationPanel(model: EvaluationViewModel = viewModel()) {
             if (com.noonmaru.routy.pleos.BuildConfig.DEBUG) requested += location
             val missing = requested.filter { context.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
             if (missing.isEmpty()) model.startCapture() else permission.launch(missing.toTypedArray())
-        }, enabled = state !is EvaluationState.Recording, modifier = Modifier.heightIn(min = 64.dp)) {
+        }, enabled = state !is EvaluationState.Recording && !autoEnabled, modifier = Modifier.heightIn(min = 64.dp)) {
             Text("실제 센서 전체 30초 수집·분석")
         }
         if (com.noonmaru.routy.pleos.BuildConfig.DEBUG) {
