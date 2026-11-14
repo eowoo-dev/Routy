@@ -48,6 +48,9 @@ val validateReleaseApi by tasks.registering {
 tasks.matching { it.name == "preReleaseBuild" }.configureEach { dependsOn(validateReleaseApi) }
 
 dependencies {
+    implementation(libs.androidx.work)
+    implementation(libs.moshi.core)
+    testImplementation(kotlin("test-junit"))
     debugImplementation("ai.pleos.playground:FusedLocation:1.1.3")
     debugImplementation("ai.pleos.playground:NaviHelper:3.0.5")
     implementation(project(":driving-evaluation"))

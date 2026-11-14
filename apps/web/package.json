@@ -16,7 +16,9 @@
     "db:migrate": "prisma migrate dev",
     "cap:sync": "pnpm build:app && cap sync",
     "android:sync": "pnpm build:app && cap sync android",
-    "ios:sync": "pnpm build:app && cap sync ios"
+    "ios:sync": "pnpm build:app && cap sync ios",
+    "db:deploy": "prisma migrate deploy",
+    "test:records": "tsx --test test/driving-records*.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1095.0",

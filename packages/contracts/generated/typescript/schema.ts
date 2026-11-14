@@ -4,6 +4,60 @@
  */
 
 export interface paths {
+    "/api/vehicle-installations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register a guest vehicle installation; same credentials are idempotent */
+        post: operations["registerVehicleInstallation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/driving-records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List this installation's completed records, newest first */
+        get: operations["listDrivingRecords"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/driving-records/{sessionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        /** Read this installation's completed record and full evaluation snapshot */
+        get: operations["getDrivingRecord"];
+        /** Create an immutable completed record; identical retries return the same receipt */
+        put: operations["putDrivingRecord"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/routy/scenarios/state": {
         parameters: {
             query?: never;
@@ -59,6 +113,81 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ApiError: {
+            code: string;
+            message: string;
+        };
+        VehicleInstallationRegistration: {
+            /** Format: uuid */
+            installationId: string;
+            /** @description Generated and saved on the client before registration; only a hash is stored on the server */
+            secret: string;
+        };
+        VehicleInstallationReceipt: {
+            /** Format: uuid */
+            installationId: string;
+        };
+        DrivingRecordUpload: {
+            schemaVersion: number;
+            /** @enum {string} */
+            origin: "LIVE" | "SYNTHETIC";
+            /**
+             * Format: date-time
+             * @description UTC wall clock; distinct from report monotonic times
+             */
+            startedAt: string;
+            /** Format: date-time */
+            endedAt: string;
+            /** Format: int64 */
+            durationMs: number;
+            engineVersion: string;
+            ruleVersion: string;
+            environmentRuleVersion?: string | null;
+            scenarioId?: string | null;
+            /** @description Versioned evaluation summary with metrics, assessments, grouped coaching and original events. No raw telemetry or installation secret. startMs/endMs are monotonic, duration matches envelope. Client evaluation, not server-certified driving accuracy. */
+            report: {
+                [key: string]: unknown;
+            };
+        };
+        DrivingRecordReceipt: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            sessionId: string;
+            /** Format: date-time */
+            receivedAt: string;
+        };
+        DrivingRecordSummary: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            sessionId: string;
+            /** Format: date-time */
+            receivedAt: string;
+            schemaVersion: number;
+            /** @enum {string} */
+            origin: "LIVE" | "SYNTHETIC";
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            endedAt: string;
+            /** Format: int64 */
+            durationMs: number;
+            engineVersion: string;
+            ruleVersion: string;
+            environmentRuleVersion?: string | null;
+            scenarioId?: string | null;
+        };
+        DrivingRecordDetail: components["schemas"]["DrivingRecordSummary"] & {
+            report: {
+                [key: string]: unknown;
+            };
+        };
+        DrivingRecordPage: {
+            items: components["schemas"]["DrivingRecordSummary"][];
+            /** Format: uuid */
+            nextCursor: string | null;
+        };
         ScenarioState: {
             /** @enum {string} */
             status: "idle" | "ready" | "running" | "stopped" | "completed";
@@ -131,7 +260,17 @@ export interface components {
             timestamp: string;
         };
     };
-    responses: never;
+    responses: {
+        /** @description Structured API failure; 429 and 5xx are retryable, other 4xx need attention */
+        ApiFailure: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ApiError"];
+            };
+        };
+    };
     parameters: never;
     requestBodies: never;
     headers: never;
@@ -139,6 +278,137 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    registerVehicleInstallation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VehicleInstallationRegistration"];
+            };
+        };
+        responses: {
+            /** @description Same installation credentials already registered */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VehicleInstallationReceipt"];
+                };
+            };
+            /** @description Installation registered */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VehicleInstallationReceipt"];
+                };
+            };
+            400: components["responses"]["ApiFailure"];
+            409: components["responses"]["ApiFailure"];
+            413: components["responses"]["ApiFailure"];
+            415: components["responses"]["ApiFailure"];
+            503: components["responses"]["ApiFailure"];
+        };
+    };
+    listDrivingRecords: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Record summaries; pass nextCursor for the next page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DrivingRecordPage"];
+                };
+            };
+            400: components["responses"]["ApiFailure"];
+            401: components["responses"]["ApiFailure"];
+            503: components["responses"]["ApiFailure"];
+        };
+    };
+    getDrivingRecord: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Record detail */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DrivingRecordDetail"];
+                };
+            };
+            400: components["responses"]["ApiFailure"];
+            401: components["responses"]["ApiFailure"];
+            404: components["responses"]["ApiFailure"];
+            503: components["responses"]["ApiFailure"];
+        };
+    };
+    putDrivingRecord: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DrivingRecordUpload"];
+            };
+        };
+        responses: {
+            /** @description Identical record already saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DrivingRecordReceipt"];
+                };
+            };
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DrivingRecordReceipt"];
+                };
+            };
+            400: components["responses"]["ApiFailure"];
+            401: components["responses"]["ApiFailure"];
+            409: components["responses"]["ApiFailure"];
+            413: components["responses"]["ApiFailure"];
+            415: components["responses"]["ApiFailure"];
+            503: components["responses"]["ApiFailure"];
+        };
+    };
     getScenarioState: {
         parameters: {
             query?: never;

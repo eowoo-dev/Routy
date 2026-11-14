@@ -1,0 +1,45 @@
+name: Driving record API
+on:
+  pull_request:
+    paths: ['apps/web/**', 'packages/contracts/**', 'pnpm-lock.yaml', '.github/workflows/driving-records.yml']
+  push:
+    branches: [main]
+    paths: ['apps/web/**', 'packages/contracts/**', 'pnpm-lock.yaml', '.github/workflows/driving-records.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  records:
+    runs-on: ubuntu-latest
+    container: node:26.12.1-bookworm-slim
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: routy
+          POSTGRES_PASSWORD: routy_test
+          POSTGRES_DB: routy_test
+        options: >-
+          --health-cmd "pg_isready -U routy -d routy_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://routy:routy_test@postgres:5432/routy_test
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v7
+      - name: Prepare dependencies and database
+        run: |
+          apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates
+          npm install --global pnpm@11.2.2
+          pnpm install --frozen-lockfile
+          pnpm contracts:generate
+          pnpm --filter @routy/web db:generate
+          pnpm --filter @routy/web db:deploy
+          pnpm typecheck
+          pnpm lint
+      - name: Start API and test isolation, retries and validation
+        run: |
+          pnpm dev > /tmp/routy-api.log 2>&1 &
+          node --input-type=module -e 'for(let i=0;i<60;i++){try{if((await fetch("http://127.0.0.1:3000/api/health")).ok)process.exit(0)}catch{}await new Promise(r=>setTimeout(r,1000))}process.exit(1)'
+          pnpm --filter @routy/web test:records

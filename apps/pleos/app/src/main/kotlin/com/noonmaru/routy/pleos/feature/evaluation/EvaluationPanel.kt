@@ -41,6 +41,7 @@ import java.util.Locale
 fun EvaluationPanel(model: EvaluationViewModel = viewModel()) {
     val state by model.state.collectAsStateWithLifecycle()
     val scenarioStatus by model.scenarioStatus.collectAsStateWithLifecycle()
+    val uploadStatus by model.uploadStatus.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val owner = LocalLifecycleOwner.current
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
@@ -54,6 +55,8 @@ fun EvaluationPanel(model: EvaluationViewModel = viewModel()) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("주행 평가", style = MaterialTheme.typography.headlineMedium)
         Text("실험용 학습 지표입니다. 급격한 조작을 운전 실수로 확정하거나 종합 점수로 환산하지 않습니다.")
+        Text(uploadStatus)
+        OutlinedButton(onClick=model::retryUploads,modifier=Modifier.heightIn(min=64.dp)) { Text("대기·확인 필요 기록 다시 전송") }
         Button(onClick = model::replayExample, enabled = state !is EvaluationState.Recording,
             modifier = Modifier.heightIn(min = 64.dp)) { Text("회전 감지·학습 피드백 합성 시연") }
         OutlinedButton(onClick = {

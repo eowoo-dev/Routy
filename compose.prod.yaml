@@ -16,6 +16,18 @@ services:
       - pleos-project-cache:/workspace/apps/pleos/.gradle
       - pleos-kotlin-cache:/workspace/apps/pleos/.kotlin
     command: [":app:assembleRelease"]
+  migrate:
+    build:
+      context: .
+      dockerfile: infra/services/Dockerfile.prod
+      target: build
+    init: true
+    command: [pnpm, --filter, '@routy/web', db:deploy]
+    environment:
+      DATABASE_URL: postgresql://routy:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.prod}@db:5432/routy?schema=public
+    depends_on:
+      db:
+        condition: service_healthy
   web:
     build:
       context: .
@@ -31,6 +43,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 30s

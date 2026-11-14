@@ -5,4 +5,4 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 WORKDIR /workspace
 ENV NEXT_TELEMETRY_DISABLED=1
 EXPOSE 3000
-CMD ["sh", "-c", "pnpm install --frozen-lockfile && pnpm dev"]
+CMD ["sh", "-c", "pnpm install --frozen-lockfile && pnpm --filter @routy/web db:generate && pnpm --filter @routy/web db:deploy && pnpm dev"]

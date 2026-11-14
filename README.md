@@ -46,7 +46,7 @@ Routy/
 - pnpm workspace는 `apps/web`, `packages/contracts`를 관리합니다. `apps/pleos`는 Gradle로 빌드합니다.
 - Android·iOS 앱 빌드 및 배포는 GitHub Actions를 사용합니다. iOS 빌드는 macOS 러너에서 수행합니다.
 
-웹은 Next.js·Emotion·TanStack Query·Zustand·Prisma·Capacitor를 기반으로 구성했습니다. `/api/health`와 OpenAPI 기반 TypeScript 계약 생성, 서버용 standalone 빌드와 앱용 정적 빌드를 제공합니다. 차량용 앱은 Kotlin·Compose·Vehicle SDK 기반 Gradle 프로젝트이며 같은 OpenAPI에서 Kotlin 클라이언트를 생성합니다. 도메인 DB 모델, 스마트폰 네이티브 프로젝트와 배포 CI는 후속 작업입니다.
+웹은 Next.js·Emotion·TanStack Query·Zustand·Prisma·Capacitor를 기반으로 구성했습니다. `/api/health`와 OpenAPI 기반 TypeScript 계약 생성, 서버용 standalone 빌드와 앱용 정적 빌드를 제공합니다. 차량용 앱은 Kotlin·Compose·Vehicle SDK 기반 Gradle 프로젝트이며 같은 OpenAPI에서 Kotlin 클라이언트를 생성합니다. 주행 기록 DB·API와 차량 앱의 완료 기록 업로드를 제공합니다. 스마트폰 네이티브 프로젝트와 배포 CI는 후속 작업입니다.
 
 ## 웹 개발 시작
 
@@ -70,3 +70,5 @@ v0.4는 위치·지도 기반 회전/커브·차로 변경 후보 검출, 입력
 - Docker는 Next.js 서버·데이터베이스 등 서비스 실행에 사용합니다. 개발은 `compose.dev.yaml`, 운영은 `compose.prod.yaml`을 각각 단독으로 사용합니다.
 - Pleos Docker 구성은 비교 실험 기록으로 보존하며, 기본 개발 환경에서는 실행하지 않습니다.
 - Windows 실행 방법과 두 환경의 검증 결과는 [infra/pleos/README.md](infra/pleos/README.md)를 참고하세요.
+
+완료 주행 기록의 공통 API·DB·설치 인증·오프라인 전송 대기는 [주행 기록 업로드 안내](docs/architecture/driving-evaluation.md#주행-기록-api와-서버-업로드)를 참고하세요.

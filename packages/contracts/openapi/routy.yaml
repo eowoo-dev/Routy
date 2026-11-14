@@ -3,6 +3,91 @@ info:
   title: Routy API
   version: 0.1.0
 paths:
+  /api/vehicle-installations:
+    post:
+      operationId: registerVehicleInstallation
+      summary: Register a guest vehicle installation; same credentials are idempotent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/VehicleInstallationRegistration'}
+      responses:
+        '201':
+          description: Installation registered
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/VehicleInstallationReceipt'}
+        '200':
+          description: Same installation credentials already registered
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/VehicleInstallationReceipt'}
+        '409': {$ref: '#/components/responses/ApiFailure'}
+        '400': {$ref: '#/components/responses/ApiFailure'}
+        '413': {$ref: '#/components/responses/ApiFailure'}
+        '415': {$ref: '#/components/responses/ApiFailure'}
+        '503': {$ref: '#/components/responses/ApiFailure'}
+  /api/driving-records:
+    get:
+      operationId: listDrivingRecords
+      summary: List this installation's completed records, newest first
+      security: [{installationBearer: []}]
+      parameters:
+        - {in: query, name: limit, schema: {type: integer, minimum: 1, maximum: 50, default: 20}}
+        - {in: query, name: cursor, schema: {type: string, format: uuid}}
+      responses:
+        '200':
+          description: Record summaries; pass nextCursor for the next page
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DrivingRecordPage'}
+        '400': {$ref: '#/components/responses/ApiFailure'}
+        '401': {$ref: '#/components/responses/ApiFailure'}
+        '503': {$ref: '#/components/responses/ApiFailure'}
+  /api/driving-records/{sessionId}:
+    parameters:
+      - {in: path, name: sessionId, required: true, schema: {type: string, format: uuid}}
+    put:
+      operationId: putDrivingRecord
+      summary: Create an immutable completed record; identical retries return the same receipt
+      security: [{installationBearer: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/DrivingRecordUpload'}
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DrivingRecordReceipt'}
+        '200':
+          description: Identical record already saved
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DrivingRecordReceipt'}
+        '400': {$ref: '#/components/responses/ApiFailure'}
+        '401': {$ref: '#/components/responses/ApiFailure'}
+        '409': {$ref: '#/components/responses/ApiFailure'}
+        '413': {$ref: '#/components/responses/ApiFailure'}
+        '415': {$ref: '#/components/responses/ApiFailure'}
+        '503': {$ref: '#/components/responses/ApiFailure'}
+    get:
+      operationId: getDrivingRecord
+      summary: Read this installation's completed record and full evaluation snapshot
+      security: [{installationBearer: []}]
+      responses:
+        '200':
+          description: Record detail
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DrivingRecordDetail'}
+        '400': {$ref: '#/components/responses/ApiFailure'}
+        '401': {$ref: '#/components/responses/ApiFailure'}
+        '404': {$ref: '#/components/responses/ApiFailure'}
+        '503': {$ref: '#/components/responses/ApiFailure'}
   /routy/scenarios/state:
     get:
       operationId: getScenarioState
@@ -47,7 +132,90 @@ paths:
               schema:
                 $ref: '#/components/schemas/HealthResponse'
 components:
+  securitySchemes:
+    installationBearer:
+      type: http
+      scheme: bearer
+      description: Installation UUID followed by a dot and its locally generated 256-bit secret; HTTPS required outside local debug
+  responses:
+    ApiFailure:
+      description: Structured API failure; 429 and 5xx are retryable, other 4xx need attention
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiError'}
   schemas:
+    ApiError:
+      type: object
+      required: [code, message]
+      properties:
+        code: {type: string}
+        message: {type: string}
+    VehicleInstallationRegistration:
+      type: object
+      additionalProperties: false
+      required: [installationId, secret]
+      properties:
+        installationId: {type: string, format: uuid}
+        secret: {type: string, pattern: '^[a-f0-9]{64}$', description: Generated and saved on the client before registration; only a hash is stored on the server}
+    VehicleInstallationReceipt:
+      type: object
+      required: [installationId]
+      properties:
+        installationId: {type: string, format: uuid}
+    DrivingRecordUpload:
+      type: object
+      additionalProperties: false
+      required: [schemaVersion, origin, startedAt, endedAt, durationMs, engineVersion, ruleVersion, report]
+      properties:
+        schemaVersion: {type: integer, minimum: 1, maximum: 1}
+        origin: {type: string, enum: [LIVE, SYNTHETIC]}
+        startedAt: {type: string, format: date-time, description: UTC wall clock; distinct from report monotonic times}
+        endedAt: {type: string, format: date-time}
+        durationMs: {type: integer, format: int64, minimum: 1, maximum: 86400000}
+        engineVersion: {type: string, maxLength: 32}
+        ruleVersion: {type: string, maxLength: 64}
+        environmentRuleVersion: {type: string, maxLength: 64, nullable: true}
+        scenarioId: {type: string, maxLength: 64, nullable: true}
+        report:
+          type: object
+          additionalProperties: true
+          description: Versioned evaluation summary with metrics, assessments, grouped coaching and original events. No raw telemetry or installation secret. startMs/endMs are monotonic, duration matches envelope. Client evaluation, not server-certified driving accuracy.
+    DrivingRecordReceipt:
+      type: object
+      required: [id, sessionId, receivedAt]
+      properties:
+        id: {type: string, format: uuid}
+        sessionId: {type: string, format: uuid}
+        receivedAt: {type: string, format: date-time}
+    DrivingRecordSummary:
+      type: object
+      required: [id, sessionId, receivedAt, schemaVersion, origin, startedAt, endedAt, durationMs, engineVersion, ruleVersion]
+      properties:
+        id: {type: string, format: uuid}
+        sessionId: {type: string, format: uuid}
+        receivedAt: {type: string, format: date-time}
+        schemaVersion: {type: integer}
+        origin: {type: string, enum: [LIVE, SYNTHETIC]}
+        startedAt: {type: string, format: date-time}
+        endedAt: {type: string, format: date-time}
+        durationMs: {type: integer, format: int64}
+        engineVersion: {type: string}
+        ruleVersion: {type: string}
+        environmentRuleVersion: {type: string, nullable: true}
+        scenarioId: {type: string, nullable: true}
+    DrivingRecordDetail:
+      allOf:
+        - {$ref: '#/components/schemas/DrivingRecordSummary'}
+        - type: object
+          required: [report]
+          properties:
+            report: {type: object, additionalProperties: true}
+    DrivingRecordPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/DrivingRecordSummary'}}
+        nextCursor: {type: string, format: uuid, nullable: true}
     ScenarioState:
       type: object
       required: [status, durationMs, count, checks]

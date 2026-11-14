@@ -7,4 +7,36 @@ datasource db {
   provider = "postgresql"
 }
 
-// Add domain models after agreeing on the Routy data model.
+enum DrivingDataOrigin {
+  LIVE
+  SYNTHETIC
+}
+
+model VehicleInstallation {
+  id         String   @id @db.Uuid
+  secretHash String   @db.Char(64)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  records    DrivingRecord[]
+}
+
+model DrivingRecord {
+  id                     String @id @default(uuid()) @db.Uuid
+  installationId         String @db.Uuid
+  sessionId              String @db.Uuid
+  installation           VehicleInstallation @relation(fields: [installationId], references: [id], onDelete: Restrict)
+  schemaVersion          Int
+  origin                 DrivingDataOrigin
+  startedAt              DateTime @db.Timestamptz(3)
+  endedAt                DateTime @db.Timestamptz(3)
+  durationMs             Int
+  engineVersion          String @db.VarChar(32)
+  ruleVersion            String @db.VarChar(64)
+  environmentRuleVersion String? @db.VarChar(64)
+  scenarioId             String? @db.VarChar(64)
+  report                 Json @db.JsonB
+  payloadHash            String @db.Char(64)
+  receivedAt             DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([installationId, sessionId])
+  @@index([installationId, receivedAt(sort: Desc), id(sort: Desc)])
+}

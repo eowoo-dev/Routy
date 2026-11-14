@@ -3,6 +3,8 @@ package com.noonmaru.routy.pleos.feature.evaluation
 import android.app.Application
 import com.noonmaru.routy.evaluation.*
 import com.noonmaru.routy.pleos.data.telemetry.*
+import com.noonmaru.routy.pleos.data.records.RecordSync
+import androidx.work.WorkManager
 import java.io.File
 import android.os.SystemClock
 import android.util.Log
@@ -53,6 +55,30 @@ class EvaluationViewModel(application: Application) : AndroidViewModel(applicati
     private val mutableScenarioStatus=MutableStateFlow("")
     val scenarioStatus=mutableScenarioStatus.asStateFlow()
     private var lastScenarioRun:String?=null
+    private val mutableUploadStatus=MutableStateFlow("서버 전송 상태 확인 중")
+    val uploadStatus=mutableUploadStatus.asStateFlow()
+    init {
+        RecordSync.schedule(application)
+        viewModelScope.launch {
+            WorkManager.getInstance(application).getWorkInfosForUniqueWorkFlow("driving-record-uploads").collect {
+                mutableUploadStatus.value=withContext(Dispatchers.IO) { runCatching { RecordSync.status(application) }.getOrElse { "전송 기록 확인 실패: ${it.message}" } }
+            }
+        }
+    }
+    fun retryUploads() {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { RecordSync.outbox(getApplication()).retryFailed();RecordSync.schedule(getApplication(),force=true) }
+                .onFailure { mutableUploadStatus.value="전송 재시도 실패: ${it.message}" }
+        }
+    }
+    private fun enqueueUpload(id:String,report:EvaluationReport,startedEpochMs:Long,scenarioId:String?=null):String {
+        return runCatching {
+            RecordSync.outbox(getApplication()).enqueue(id,report,startedEpochMs,scenarioId)
+            RecordSync.schedule(getApplication())
+            "서버 전송 대기 목록에 저장했습니다"
+        }.getOrElse { "서버 전송 준비 실패: ${it.message}".also { message -> mutableUploadStatus.value=message } }
+    }
+
 
     fun watchScenarios() {
         if(!com.noonmaru.routy.pleos.BuildConfig.DEBUG)return
@@ -81,9 +107,12 @@ class EvaluationViewModel(application: Application) : AndroidViewModel(applicati
                             TraceReplay.verifyCaptured(restored,engine.evaluate(TraceReplay.session(restored)))
                         }
                         if(generation==requestedGeneration) {
-                            withContext(Dispatchers.IO) { saveScenario(document) }
+                            val sync=withContext(Dispatchers.IO) {
+                                saveScenario(document)
+                                enqueueUpload(snapshot.runId,report,System.currentTimeMillis()-(report.endMs-report.startMs),snapshot.scenarioId)
+                            }
                             lastScenarioRun=snapshot.runId
-                            mutableState.value=EvaluationState.Finished(report,"${snapshot.scenarioId} 완료 · 합성 환경 기록 자동 분석\n저장: files/scenario-reviews/latest.json")
+                            mutableState.value=EvaluationState.Finished(report,"${snapshot.scenarioId} 완료 · 합성 환경 기록 자동 분석\n저장: files/scenario-reviews/latest.json\n$sync")
                             logReport(report)
                         }
                     }
@@ -281,7 +310,11 @@ class EvaluationViewModel(application: Application) : AndroidViewModel(applicati
             }
             val normalized = PracticeInputs.normalize(session.copy(roadNetwork=map))
             val report = withContext(Dispatchers.Default) { engine.evaluate(normalized) }
-            val trace = withContext(Dispatchers.IO) { runCatching { saveTrace(normalized, report) }.getOrElse { "저장 실패: ${it.message}" } }
+            val trace = withContext(Dispatchers.IO) {
+                val local=runCatching { saveTrace(normalized, report) }.getOrElse { "저장 실패: ${it.message}" }
+                val sync=enqueueUpload(current.sessionId,report,current.startEpochMs)
+                "$local\n$sync"
+            }
             // A user may have started a new capture while evaluation was running.
             if (current.generation == generation && capture == null && mutableState.value is EvaluationState.Recording) {
                 mutableState.value = EvaluationState.Finished(report, "$detail\n센서 기록: $trace\n$mapDetail")
@@ -324,6 +357,7 @@ class EvaluationViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     private class Capture(val startMs: Long, val generation: Long, val startEpochMs: Long) {
+        val sessionId=java.util.UUID.randomUUID().toString()
         val environment=mutableListOf<AlignedEnvironmentFrame>()
         var environmentJob: Job? = null
         val telemetry = mutableListOf<SensorReading>()

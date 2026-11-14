@@ -1,0 +1,9 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { upload,registration,canonical,uuid } from "../src/server/driving-records/validation";
+export function fixture() {return {schemaVersion:1,origin:"SYNTHETIC",startedAt:"2026-11-14T00:00:00Z",endedAt:"2026-11-14T00:00:01Z",durationMs:1000,engineVersion:"0.7.0",ruleVersion:"experimental-0.4",environmentRuleVersion:"environment-0.3",scenarioId:"test",report:{engineVersion:"0.7.0",origin:"SYNTHETIC",ruleVersion:"experimental-0.4",startMs:50,endMs:1050,assessments:[],events:[],feedback:[]}};}
+test("normalizes wall clocks and preserves the full report",()=>{const result=upload(fixture());assert.equal(result.startedAt,"2026-11-14T00:00:00.000Z");assert.deepEqual(result.report,fixture().report);});
+test("metadata contradictions, malformed dates, unsupported origin and extra fields fail",()=>{for(const change of [{durationMs:999},{origin:"RECORDED"},{startedAt:"2026-02-30T00:00:00Z"},{extra:1},{engineVersion:"0.6.0"},{ruleVersion:"different"},{report:{...fixture().report,endMs:1051}}])assert.throws(()=>upload({...fixture(),...change}));});
+test("non-finite numbers and deeply nested reports fail",()=>{assert.throws(()=>upload({...fixture(),report:{...fixture().report,value:NaN}}));let nested:unknown=0;for(let i=0;i<30;i++)nested={nested};assert.throws(()=>upload({...fixture(),report:{...fixture().report,nested}}));});
+test("canonical payload hash input ignores object key order but retains array order",()=>{assert.equal(canonical({b:1,a:[2,3]}),canonical({a:[2,3],b:1}));assert.notEqual(canonical([2,3]),canonical([3,2]));});
+test("installation credentials and path IDs are strictly validated",()=>{assert.throws(()=>registration({installationId:"../../x",secret:"a".repeat(64)}));assert.throws(()=>registration({installationId:"0ed1953c-47de-4b21-8c05-d2f61e885201",secret:"weak"}));assert.throws(()=>uuid("x"));});

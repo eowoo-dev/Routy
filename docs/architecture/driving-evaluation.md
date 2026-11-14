@@ -151,3 +151,27 @@ AAOS·Pleos·지도 어댑터 (app)
 - 최종 APK 재수집: 142채널/관측 678개, 속도 185개, 조향 64개. 좌석 영역이 `ROW_1_LEFT` 등 안정적인 이름으로 저장됨을 확인. 무신호 반복 보정 후보·신호 동반 조향·제동 동반 조작 분기 재확인.
 - FusedLocation의 마지막 알려진 위치 조회는 SNAPSHOT으로 별도 기록. 실시간 위치 스트림 콜백은 여전히 TIMEOUT이며 캐시 응답을 실시간 위치로 대체하지 않음.
 - 현재 진단 Activity는 주행 중 인포테인먼트의 사용 제한 화면에 가려집니다. P단에서 수집을 시작하고 복귀 후 결과를 확인합니다. 이번 이미지에서는 제한 화면 뒤에서도 이미 시작한 수집은 완료됐지만, 이는 주행 중 사용 승인을 받은 제품 UI나 백그라운드 서비스 구현을 의미하지 않습니다.
+
+
+## 주행 기록 API와 서버 업로드
+
+완료된 실제 SDK 수집과 독립 시나리오의 자동 분석 결과를 공통 API로 전송한다. 단순 예제 재생·수동 분석·저장본 복습은 새 주행을 만들지 않는다. 원시 SDK/위치 표본 전체 대신 `TraceReplay.summary`의 평가 항목·수치·환경 출처·원본 사건·묶음 코칭을 저장한다. 서버는 클라이언트가 계산한 결과를 보관하며 운전 정확도를 재인증하지 않는다.
+
+OpenAPI 원본은 `packages/contracts/openapi/routy.yaml`이며 TypeScript 모델과 Kotlin API 클라이언트를 생성한다. 전송 형식은 schemaVersion 1이고 origin은 LIVE 또는 SYNTHETIC이다. 엔진/기본 규칙/환경 규칙 버전, UTC 시작·종료 시각과 durationMs를 함께 보관한다. 보고서 내부 startMs/endMs는 세션의 monotonic 시각이며 UTC와 섞지 않는다. 합성 시나리오의 UTC 구간은 첫 완료 분석 시각에서 합성 길이를 뺀 추정값이다. 같은 실행의 재전송은 최초 값 그대로 사용한다.
+
+| API | 동작 |
+|---|---|
+| POST `/api/vehicle-installations` | 로컬에서 먼저 만든 설치 UUID·256비트 인증키 등록. 동일 인증은 200, 신규는 201, 다른 키로 덮어쓰기는 409 |
+| PUT `/api/driving-records/{sessionId}` | 완료 기록 최초 저장 201, 같은 내용 재전송 200, 같은 세션의 다른 내용은 409 |
+| GET `/api/driving-records` | 해당 설치의 수신 시각 역순 목록. limit 1~50, nextCursor 기반 다음 페이지 |
+| GET `/api/driving-records/{sessionId}` | 해당 설치가 올린 전체 평가 스냅샷. 다른 설치 기록은 404 |
+
+Prisma의 VehicleInstallation은 인증키 SHA-256만 저장하고 DrivingRecord는 설치/세션 복합 유일 제약, JSONB 보고서, 정규화된 payloadHash와 버전/시각 메타데이터를 저장한다. 동시 업로드도 DB 유일 제약으로 한 건만 생성한다. 본문은 최대 2MiB, 형식·시각 길이·보고서 메타데이터 일치·JSON 깊이/크기를 검사한다. 상세·목록·업로드는 `Bearer 설치UUID.인증키`가 필요하며 응답은 no-store이다. 인증키는 응답·로그·보고서에 넣지 않는다.
+
+현재 소유 범위는 게스트 차량 설치다. 사용자 로그인, 스마트폰 계정에 차량을 연결하는 절차, 인증키 교체·폐기는 후속 단계다. 스마트폰에 차량 설치 인증키를 복사하는 방식으로 계정 연결을 대신하지 않는다. 운영 외부 노출 전 가입/등록 요청 제한 등 운영 정책도 별도로 설정한다.
+
+차량 앱은 `no_backup/driving-records/{sessionId}.json`에 불변 전송 본문을 먼저 원자적으로 저장한다. SDK 수집마다 UUID를 만들고 시나리오는 runId를 사용한다. 인증 정보는 별도 `no_backup/vehicle-installation.json`에 보관한다. 앱 재시작 후 같은 파일을 읽으며 대기 항목을 새 UUID로 바꾸지 않는다. 서버 저장 응답의 세션 ID를 확인한 뒤 SENT와 서버 영수증을 기록한다. 네트워크 실패로 응답을 못 받아도 같은 세션을 재전송하므로 중복 저장되지 않는다.
+
+[WorkManager](https://developer.android.com/jetpack/androidx/releases/work) 2.12.0으로 네트워크 연결 조건과 30초부터의 지수 백오프 재시도를 예약한다. 서버 연결 실패·408·429·5xx는 자동 재시도하고, 다른 4xx는 FAILED로 남겨 확인을 요청한다. 화면의 재전송 버튼은 실패 항목을 다시 대기로 돌리고 지연된 작업을 즉시 다시 예약한다. 대기·실패 기록을 자동 삭제하지 않으며 미전송 항목은 최대 200개다. 전송 완료 사본도 현재 유지한다. 장기 보관/정리 정책은 후속 작업이다. Release 빌드는 기존 HTTPS 서버 주소 검사를 따른다.
+
+개발 DB는 `pnpm --filter @routy/web db:deploy`로 적용한다. 새 개발 컨테이너는 Prisma 생성·마이그레이션 후 서버를 시작한다. 운영 Compose는 migrate 서비스 성공 후 web을 시작한다. 프로덕션 이미지는 Prisma 클라이언트를 빌드 중 생성하며 DB를 읽는 코드는 Capacitor 정적 빌드에서 제외된다.
