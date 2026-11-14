@@ -83,6 +83,20 @@ class AutomaticContinuityOracleTest(unittest.TestCase):
     def test_speed_mismatch_is_rejected(self):
         for r in self.trace['speed']:r['value']=0
         self.assertTrue(self.errors())
+    def test_initial_zero_to_target_transition_is_preserved(self):
+        end=self.stages[3]['updatedMs']
+        self.trace['speed'] += [{'atMs':end-1900,'value':0,'available':True}]
+        self.assertEqual([],self.errors())
+    def test_return_to_zero_after_target_is_rejected(self):
+        self.trace['speed'].append({'atMs':self.stages[3]['updatedMs']-50,'value':0,'available':True})
+        self.assertTrue(self.errors())
+    def test_single_target_sample_is_insufficient(self):
+        end=self.stages[3]['updatedMs']
+        self.trace['speed']=[r for r in self.trace['speed'] if not end-2000<=r['atMs']<=end]+[{'atMs':end,'value':24/3.6,'available':True}]
+        self.assertTrue(self.errors())
+    def test_background_speed_transition_is_rejected(self):
+        self.trace['speed'].append({'atMs':self.stages[6]['updatedMs']-1900,'value':0,'available':True})
+        self.assertTrue(self.errors())
     def test_steering_must_continue_in_background(self):
         self.trace['steering']=[];self.assertTrue(self.errors())
     def test_different_stored_report_is_rejected(self):

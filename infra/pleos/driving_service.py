@@ -67,7 +67,15 @@ def verify_auto_continuity(snapshots,trace,session_id,queued,park_since):
             if i and row.get('samples',0)<=snapshots[i-1].get('samples',0):errors.append(row['name']+': speed acquisition stopped')
             end=row['updatedMs'];start=end-2000
             speed=[r for r in trace.get('speed',[]) if r.get('available') and start<=r['atMs']<=end]
-            if len(speed)<5 or any(abs(r['value']-24/3.6)>.8 for r in speed):errors.append(row['name']+': raw SDK speed missing')
+            speed.sort(key=lambda r:r['atMs'])
+            # The first acceleration may settle inside this window. Preserve its
+            # actual zero-speed samples, then require a sustained expected tail.
+            # Background driving must remain steady throughout the window.
+            if row['name']=='drive-moving':
+                settled=next((i for i,r in enumerate(speed) if abs(r['value']-24/3.6)<=.8),len(speed))
+                if any(abs(r['value'])>.8 for r in speed[:settled]):errors.append('drive-moving: unexpected speed before settling')
+                speed=speed[settled:]
+            if len(speed)<5 or speed[-1]['atMs']-speed[0]['atMs']<500 or any(abs(r['value']-24/3.6)>.8 for r in speed):errors.append(row['name']+': raw SDK speed missing')
             if row['name']=='background':
                 angles=[r['value'] for r in trace.get('steering',[]) if r.get('available') and start<=r['atMs']<=end]
                 if len(angles)<2 or max(angles)-min(angles)<20:errors.append('background: steering stopped')
