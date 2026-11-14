@@ -19,5 +19,12 @@ class AutoTripPolicyTest {
     @Test fun disablingFinishesExistingRecord(){assertEquals(FINISH,tick(4,0,true,false));assertEquals(NONE,tick(8,1,false,false))}
     @Test fun savingCannotStartOrFinishAgain(){assertEquals(NONE,tick(8,0,false,true,true));assertEquals(NONE,tick(4,20_000,true,false,true))}
     @Test fun nextDriveStartsAfterParkCompletion(){tick(8,0,false);tick(4,100);assertEquals(FINISH,tick(4,10_100));assertEquals(START,tick(8,11_000,false))}
-    @Test fun recordingTimeLimitDoesNotRestartRepeatedlyInDrive(){tick(8,0,false);assertEquals(NONE,tick(8,600_000,false));tick(4,601_000,false);assertEquals(START,tick(8,602_000,false))}
+    @Test fun repeatedDriveAfterAnExternalStopNeedsParkBeforeRestart(){tick(8,0,false);assertEquals(NONE,tick(8,600_000,false));tick(4,601_000,false);assertEquals(START,tick(8,602_000,false))}
+    @Test fun twoHourDriveHasNoDeadlineAndStillRequiresContinuousPark(){
+        assertEquals(START,tick(8,0,false))
+        for(time in 250L..7_200_000L step 250)assertEquals(NONE,tick(when((time/600_000)%3){1L->2;2L->1;else->8},time))
+        assertEquals(NONE,tick(4,7_200_001))
+        assertEquals(NONE,tick(4,7_210_000))
+        assertEquals(FINISH,tick(4,7_210_001))
+    }
 }

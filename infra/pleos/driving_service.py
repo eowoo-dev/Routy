@@ -77,18 +77,35 @@ def verify_auto_continuity(snapshots,trace,session_id,queued,park_since):
     return errors
 
 
+def verify_long_recording(trace, checkpoints, session_id, minimum_ms):
+    """Require raw data past the former deadline, not just a long report timestamp."""
+    errors=[]
+    start=trace.get('startMs',0);end=trace.get('endMs',0)
+    if end-start<minimum_ms:errors.append('Long recording ended too soon')
+    if not checkpoints or checkpoints[-1].get('updatedMs',0)-start<minimum_ms:
+        errors.append('No live checkpoint beyond the requested duration')
+    for row in checkpoints:
+        if row.get('sessionId')!=session_id or row.get('phase')!='RECORDING':errors.append('Long recording stopped or changed session')
+    for field in ('speed','steering','readings'):
+        rows=[r for r in trace.get(field,[]) if r.get('available') and start+minimum_ms<=r.get('atMs',0)<=end]
+        if len(rows)<2:errors.append('Long recording: late '+field+' evidence missing')
+    return errors
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--serial',default='emulator-5554')
     parser.add_argument('--console-url',default='http://127.0.0.1:8088')
     parser.add_argument('--adb')
+    parser.add_argument('--long-seconds',type=int,default=0,help='Hold a real background drive for at least this many seconds (minimum 660)')
     args=parser.parse_args()
+    if args.long_seconds and args.long_seconds<660:parser.error('--long-seconds must be at least 660')
     emu=Emulator(args)
     output=ROOT/'apps/pleos/driving-evaluation/build/scenarios/driving-service'
     output.mkdir(parents=True,exist_ok=True)
     client='routy-service-test-'+uuid.uuid4().hex
     stop=threading.Event();worker=None;heartbeat_errors=[];web_stopped=False;lease_started=False
-    session_id=None;snapshots=[];errors=[];proof={};owned=set();initial_enabled=False;settings_touched=False
+    session_id=None;snapshots=[];errors=[];proof={};owned=set();initial_enabled=False;settings_touched=False;long_checkpoints=[]
     def app_json(path):
         raw=emu.shell('run-as',PACKAGE,'--user',emu.user,'cat',path,check=False)
         try:return json.loads(raw)
@@ -218,6 +235,21 @@ def main():
         blocks=re.split(r'(?=\* Hist #)',dump)
         proof['activityStopped']=any('DrivingActivity' in b and re.search(r'(?:mState|state)=STOPPED',b) for b in blocks)
         if not proof['activityStopped']:raise RuntimeError('Driving Activity STOPPED state was not observed')
+        if args.long_seconds:
+            # Real wall-clock soak, no clock overrides. Keep steady inputs during the
+            # middle, then exercise steering again after the old ten-minute deadline.
+            until=time.monotonic()+args.long_seconds;next_checkpoint=0
+            emu.request('/vehicle/controls','PUT',speed=24,accelerator=0,brake=0,steering=0)
+            while time.monotonic()<until:
+                if heartbeat_errors:raise RuntimeError(heartbeat_errors[0])
+                if time.monotonic()>=next_checkpoint:
+                    r=journal();long_checkpoints.append(r)
+                    if r.get('sessionId')!=session_id or r.get('phase')!='RECORDING':raise RuntimeError('Long drive stopped before Park')
+                    if app_json('no_backup/driving-records/'+session_id+'.json'):raise RuntimeError('Long drive saved before Park')
+                    print('SOAK',r.get('updatedMs',0)-r.get('startedMs',0),'ms samples',r.get('samples'),flush=True)
+                    next_checkpoint=time.monotonic()+30
+                time.sleep(1)
+            long_checkpoints.append(journal())
         stage('background',5)
         emu.reset();stage('returned-park')
         park_since=journal()['parkSinceMs']
@@ -227,6 +259,9 @@ def main():
         queued=app_json('no_backup/driving-records/'+session_id+'.json')
         if not trace or not queued:raise RuntimeError('Exact session trace or queue file missing')
         errors.extend(verify_auto_continuity(snapshots,trace,session_id,queued,park_since))
+        if args.long_seconds:
+            errors.extend(verify_long_recording(trace,long_checkpoints,session_id,args.long_seconds*1000))
+            proof['longDurationMs']=trace['endMs']-trace['startMs']
         (output/'latest.json').write_text(json.dumps(trace,ensure_ascii=False,indent=2),encoding='utf-8')
         proof['offlineStored']=queued['state']=='PENDING'
         compose('start');web_stopped=False;wait(healthy,'API recovery failed',90)
@@ -280,7 +315,7 @@ def main():
                     click_text('자동 기록 켜기' if initial_enabled else '자동 기록 끄기')
             except Exception as exc:errors.append('Preference restore: '+str(exc))
         errors.extend(heartbeat_errors[:3])
-        result={'passed':not errors,'sessionId':session_id,'stages':snapshots,'proof':proof,'errors':errors}
+        result={'passed':not errors,'sessionId':session_id,'stages':snapshots,'longCheckpoints':long_checkpoints,'proof':proof,'errors':errors}
         (output/'result.json').write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
     print('PASS' if not errors else 'FAIL',json.dumps(errors,ensure_ascii=False),flush=True)
     return 0 if not errors else 1

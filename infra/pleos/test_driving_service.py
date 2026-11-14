@@ -3,7 +3,38 @@ import copy
 import unittest
 import struct
 import zlib
-from driving_service import verify_auto_continuity,png_pixel
+from driving_service import verify_auto_continuity,verify_long_recording,png_pixel
+
+
+class LongRecordingOracleTest(unittest.TestCase):
+    def setUp(self):
+        self.trace={'startMs':1000,'endMs':681000}
+        for key in ('speed','steering','readings'):
+            self.trace[key]=[{'atMs':662000+i*100,'available':True} for i in range(3)]
+        self.checkpoints=[{'sessionId':'a','phase':'RECORDING','updatedMs':662000}]
+    def errors(self):return verify_long_recording(self.trace,self.checkpoints,'a',660000)
+    def test_complete_long_record_passes(self):self.assertEqual([],self.errors())
+    def test_late_timestamps_alone_are_not_evidence(self):
+        self.trace['speed']=[]
+        self.assertTrue(self.errors())
+    def test_early_stop_is_rejected(self):
+        self.trace['endMs']=601000
+        self.assertTrue(self.errors())
+    def test_split_session_is_rejected(self):
+        self.checkpoints[0]['sessionId']='b'
+        self.assertTrue(self.errors())
+    def test_premature_save_is_rejected(self):
+        self.checkpoints[0]['phase']='SAVED'
+        self.assertTrue(self.errors())
+    def test_missing_live_checkpoint_is_rejected(self):
+        self.checkpoints=[]
+        self.assertTrue(self.errors())
+    def test_stale_live_checkpoint_is_rejected(self):
+        self.checkpoints[0]['updatedMs']=601000
+        self.assertTrue(self.errors())
+    def test_old_or_unavailable_evidence_is_rejected(self):
+        self.trace['readings']=[{'atMs':1001,'available':True},{'atMs':662000,'available':False}]
+        self.assertTrue(self.errors())
 
 
 class VisibleSurfaceTest(unittest.TestCase):
