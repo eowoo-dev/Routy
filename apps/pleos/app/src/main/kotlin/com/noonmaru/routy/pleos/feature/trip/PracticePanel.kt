@@ -27,7 +27,7 @@ import com.noonmaru.routy.pleos.feature.evaluation.EvaluationState
         if(value && context.checkSelfPermission("android.car.permission.CAR_SPEED")!=PackageManager.PERMISSION_GRANTED)permission.launch("android.car.permission.CAR_SPEED")
         else AutoRecording.setEnabled(context,value)
     }
-    Card(Modifier.fillMaxWidth()) {
+    Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surface)) {
         Column(Modifier.padding(28.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
             Text("운전 연습 자동 기록",fontSize=28.sp)
             Text("D단에서 기록을 시작해요. R·N단에서도 이어서 기록하고, P단이 10초 유지되면 저장해요.",fontSize=22.sp)

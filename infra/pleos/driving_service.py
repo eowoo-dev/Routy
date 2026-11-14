@@ -1,4 +1,4 @@
-"""User-flow integration on the local Pleos emulator only: P -> D stationary -> D moving -> HOME -> P.
+"""Automatic recording integration on the local Pleos emulator: D -> R -> N -> D -> short P -> D -> HOME -> P (10s).
 Temporarily stops only compose.dev.yaml web to verify durable offline saving, then restores it.
 No UX restriction overrides, private VHAL injections, installation secret output, or physical cars.
 """
@@ -47,32 +47,33 @@ def png_pixel(data,x,y):
     return tuple(previous[x*channels:x*channels+3])
 
 
-def verify_continuity(snapshots, trace, session_id, queued):
+def verify_auto_continuity(snapshots,trace,session_id,queued,park_since):
     errors=[]
-    if [s['name'] for s in snapshots] != ['park','drive-stationary','drive-moving','background','returned-park']:
-        errors.append('Missing P/D/background/P stages')
-    for previous,current in zip(snapshots,snapshots[1:]):
-        if current.get('sessionId')!=session_id or current.get('samples',0)<=previous.get('samples',0):
-            errors.append(current['name']+': session changed or acquisition did not advance')
-    for sample in snapshots[1:4]:
-        if sample.get('gear')!=8 or sample.get('requiresOptimization') is not True or sample.get('uxKnown') is not True:
-            errors.append(sample['name']+': D/UX restriction was not independently observed')
-    if not snapshots or snapshots[-1].get('gear')!=4 or snapshots[-1].get('requiresOptimization') is not False:
-        errors.append('Final P/unrestricted state was not observed')
-    if trace.get('origin')!='LIVE' or trace.get('truncated') is not False:
-        errors.append('Expected untruncated LIVE input')
-    for sample in snapshots[1:4]:
-        end=sample['updatedMs'];start=end-2000
-        rows=[r for r in trace.get('speed',[]) if r.get('available') is True and start<=r.get('atMs',-1)<=end]
-        expected=0 if sample['name']=='drive-stationary' else 24/3.6
-        if len(rows)<5 or any(abs(r['value']-expected)>0.8 for r in rows):
-            errors.append(sample['name']+': commanded speed absent from raw SDK evidence')
-        if sample['name']=='background':
-            angles=[r['value'] for r in trace.get('steering',[]) if r.get('available') is True and start<=r.get('atMs',-1)<=end]
-            if len(angles)<2 or max(angles)-min(angles)<20:
-                errors.append('background: steering callbacks did not continue')
-    if queued.get('sessionId')!=session_id or queued.get('state')!='PENDING' or queued.get('payload',{}).get('report')!=trace.get('analysis'):
-        errors.append('Offline queue does not preserve this exact evaluation')
+    names=['drive-stationary','reverse','neutral','drive-moving','short-park','resumed-drive','background','returned-park']
+    if [s['name'] for s in snapshots]!=names:errors.append('Missing automatic-recording stages')
+    for i,row in enumerate(snapshots):
+        if row.get('sessionId')!=session_id or not row.get('automatic'):errors.append(row['name']+': session changed or not automatic')
+        if i and row.get('samples',0)<snapshots[i-1].get('samples',0):errors.append(row['name']+': sample counter reset')
+        gear={'reverse':2,'neutral':1,'short-park':4,'returned-park':4}.get(row['name'],8)
+        if row.get('gear')!=gear:errors.append(row['name']+': wrong observed gear')
+        if row['name'] in ('reverse','neutral'):
+            expected='REVERSE' if row['name']=='reverse' else 'NEUTRAL'
+            # AAOS snapshots can arrive later than the gear callback. Correlate the
+            # preserved provider timestamp, not a delayed polling receipt, to this phase.
+            lower=snapshots[i-1]['updatedMs'] if i else trace.get('startMs',0)
+            gear_rows=[r for r in trace.get('readings',[]) if r.get('signal')=='AAOS.GEAR_SELECTION' and r.get('available') and lower<=r.get('providerTimestampMs',r['atMs'])<=row['updatedMs']]
+            if not any(r.get('state')==expected for r in gear_rows):errors.append(row['name']+': raw gear evidence missing')
+        if row['name'] in ('drive-moving','background'):
+            if i and row.get('samples',0)<=snapshots[i-1].get('samples',0):errors.append(row['name']+': speed acquisition stopped')
+            end=row['updatedMs'];start=end-2000
+            speed=[r for r in trace.get('speed',[]) if r.get('available') and start<=r['atMs']<=end]
+            if len(speed)<5 or any(abs(r['value']-24/3.6)>.8 for r in speed):errors.append(row['name']+': raw SDK speed missing')
+            if row['name']=='background':
+                angles=[r['value'] for r in trace.get('steering',[]) if r.get('available') and start<=r['atMs']<=end]
+                if len(angles)<2 or max(angles)-min(angles)<20:errors.append('background: steering stopped')
+    if trace.get('origin')!='LIVE' or trace.get('truncated') is not False:errors.append('Expected untruncated LIVE acquisition')
+    if trace.get('endMs',0)-park_since<10_000:errors.append('Record ended before ten continuous seconds of Park')
+    if queued.get('sessionId')!=session_id or queued.get('state')!='PENDING' or queued.get('payload',{}).get('report')!=trace.get('analysis'):errors.append('Offline saved report differs from exact captured session')
     return errors
 
 
@@ -87,12 +88,17 @@ def main():
     output.mkdir(parents=True,exist_ok=True)
     client='routy-service-test-'+uuid.uuid4().hex
     stop=threading.Event();worker=None;heartbeat_errors=[];web_stopped=False;lease_started=False
-    session_id=None;snapshots=[];errors=[];proof={}
+    session_id=None;snapshots=[];errors=[];proof={};owned=set();initial_enabled=False;settings_touched=False
     def app_json(path):
         raw=emu.shell('run-as',PACKAGE,'--user',emu.user,'cat',path,check=False)
         try:return json.loads(raw)
         except json.JSONDecodeError:return None
     def journal():return app_json('no_backup/active-trip.json') or {}
+    def preference():
+        text=emu.shell('run-as',PACKAGE,'--user',emu.user,'cat','shared_prefs/driving-preferences.xml',check=False)
+        try:return any(n.get('name')=='auto-record' and n.get('value')=='true' for n in ET.fromstring(text))
+        except ET.ParseError:return False
+    def uptime():return int(float(emu.shell('cat','/proc/uptime').split()[0])*1000)
     def wait(action,message,timeout=30):
         deadline=time.monotonic()+timeout
         while time.monotonic()<deadline:
@@ -118,10 +124,17 @@ def main():
         try:return api('/api/health').get('status')=='ok'
         except OSError:return False
     def click_text(text):
+        names=(text,) if isinstance(text,str) else text
         for _ in range(7):
             emu.shell('uiautomator','dump','/sdcard/routy-service-window.xml')
             root=ET.fromstring(emu.shell('cat','/sdcard/routy-service-window.xml'))
-            node=next((n for n in root.iter('node') if n.get('package')==PACKAGE and n.get('text')==text and n.get('enabled')=='true'),None)
+            if not any(n.get('package')==PACKAGE for n in root.iter('node')):
+                # Pleos has two resumed panes. A cold boot can leave accessibility focus on
+                # the left vehicle pane although Routy's Activity is visible on the right.
+                # Focus the observed, non-interactive Routy header on this fixed 2560x1440 image.
+                emu.shell('input','tap',1700,160)
+                continue
+            node=next((n for n in root.iter('node') if n.get('package')==PACKAGE and n.get('text') in names and n.get('enabled')=='true'),None)
             if node is not None:
                 x1,y1,x2,y2=map(int,re.findall(r'\d+',node.get('bounds','')))
                 if x2>x1 and y2>y1:
@@ -131,22 +144,24 @@ def main():
                 x1,y1,x2,y2=map(int,re.findall(r'\d+',scroll.get('bounds')))
                 emu.shell('input','swipe',(x1+x2)//2,y2-90,(x1+x2)//2,y1+90,250)
             time.sleep(.4)
-        raise RuntimeError('User control unavailable: '+text)
+        raise RuntimeError('User control unavailable: '+str(names))
     def home():emu.shell('am','start','-W','--user',emu.user,'-f','0x10008000','-a','android.intent.action.MAIN','-c','android.intent.category.LAUNCHER','-n',PACKAGE+'/com.noonmaru.routy.pleos.feature.trip.DrivingActivity')
     def stage(name,seconds=4):
+        if heartbeat_errors:raise RuntimeError(heartbeat_errors[0])
         until=time.monotonic()+seconds
         step=0
         while time.monotonic()<until:
+            if heartbeat_errors:raise RuntimeError(heartbeat_errors[0])
             if name in ('drive-moving','background'):
                 emu.request('/vehicle/controls','PUT',speed=24,accelerator=0,brake=0,steering=[0,40,0,-40][step%4]);step+=1
             time.sleep(.5)
         row=journal();row['name']=name;snapshots.append(row)
-        if row.get('sessionId')!=session_id or row.get('phase')!='RECORDING':raise RuntimeError(name+': recorder stopped or session changed')
+        if row.get('sessionId')!=session_id or row.get('phase') not in ('RECORDING','PARK_WAIT'):raise RuntimeError(name+': recorder stopped or session changed')
         print('INPUT',name,'samples',row.get('samples'),flush=True)
     try:
         require_exclusive_console(lease)
         prior=journal()
-        if prior.get('phase')=='RECORDING' and 'TripService' in emu.shell('dumpsys','activity','services',PACKAGE):
+        if prior.get('phase') in ('RECORDING','PARK_WAIT','SAVING') and 'TripService' in emu.shell('dumpsys','activity','services',PACKAGE):
             raise RuntimeError('An existing practice is active; finish it before running this test')
         state=emu.request('/vehicle/state')
         if state['gear']['actual']['value']!='Park' or state['controls']['speed_kph']!=0:raise RuntimeError('Begin in Park at zero speed')
@@ -154,21 +169,21 @@ def main():
         wait(lambda:emu.request('/vehicle/state')['gear']['bridge_ready'],'Console bridge unavailable')
         emu.reset();time.sleep(2)
         wait(healthy,'Development API unavailable',60)
-        web_stopped=True;compose('stop')
+        initial_enabled=preference()
+        settings_touched=True
         home()
-        row=None
-        for attempt in range(3):
-            click_text('운전 연습 시작')
-            try:
-                row=wait(lambda:(r if (r:=journal()).get('phase')=='RECORDING' and r.get('sessionId')!=prior.get('sessionId') else None),'No fresh service capture',5)
-                break
-            except RuntimeError:
-                # A connection-error banner can reflow the parked page between dump and tap.
-                # Re-read its layout and retry the visible user control, never bypass startup checks.
-                if attempt==2:raise
-        session_id=row['sessionId']
-        stage('park')
+        if not initial_enabled:click_text('자동 기록 켜기')
+        wait(lambda:journal().get('armed') and journal().get('autoEnabled'),'Automatic recording was not armed')
+        assert journal().get('phase') in ('ARMED','SAVED')
+        floor=uptime()
+        emu.shell('am','force-stop','--user',emu.user,PACKAGE)
+        home()
+        wait(lambda:journal().get('armed') and journal().get('updatedMs',0)>=floor,'Enabled setting did not re-arm on app launch')
+        proof['enabledSettingPersisted']=preference()
+        web_stopped=True;compose('stop')
         emu.request('/vehicle/gear','PUT',gear='Drive')
+        row=wait(lambda:(r if (r:=journal()).get('phase')=='RECORDING' and r.get('sessionId')!=prior.get('sessionId') else None),'D did not start a fresh automatic capture')
+        session_id=row['sessionId'];owned.add(session_id)
         stage('drive-stationary')
         emu.shell('uiautomator','dump','/sdcard/routy-service-window.xml')
         restricted_xml=emu.shell('cat','/sdcard/routy-service-window.xml')
@@ -183,8 +198,18 @@ def main():
         expected=tuple(int(color[i:i+2],16) for i in (0,2,4))
         proof['visibleDrivingSurface']=png_pixel(screenshot.stdout,bounds[0]+50,bounds[1]+50)==expected
         if not proof['visibleDrivingSurface']:raise RuntimeError('Launcher covers the driving Activity despite its accessible UI tree')
+        emu.request('/vehicle/gear','PUT',gear='Reverse')
+        wait(lambda:journal().get('gear')==2,'Reverse was not observed by the app');stage('reverse',3)
+        emu.request('/vehicle/gear','PUT',gear='Neutral')
+        wait(lambda:journal().get('gear')==1,'Neutral was not observed by the app');stage('neutral',3)
+        emu.request('/vehicle/gear','PUT',gear='Drive')
         emu.request('/vehicle/controls','PUT',speed=24,accelerator=0,brake=0,steering=0)
         stage('drive-moving',5)
+        emu.reset();stage('short-park',3)
+        if app_json('no_backup/driving-records/'+session_id+'.json'):raise RuntimeError('Short Park ended the recording')
+        emu.request('/vehicle/gear','PUT',gear='Drive');stage('resumed-drive',2)
+        if journal().get('parkSinceMs') is not None:raise RuntimeError('D did not cancel the Park countdown')
+        emu.request('/vehicle/controls','PUT',speed=24,accelerator=0,brake=0,steering=0)
         # A stopped Activity is required evidence; simply obscuring the screen is insufficient.
         emu.shell('input','keyevent',3)
         time.sleep(1)
@@ -195,12 +220,13 @@ def main():
         if not proof['activityStopped']:raise RuntimeError('Driving Activity STOPPED state was not observed')
         stage('background',5)
         emu.reset();stage('returned-park')
-        home();click_text('연습 마치고 저장')
+        park_since=journal()['parkSinceMs']
+        if app_json('no_backup/driving-records/'+session_id+'.json'):raise RuntimeError('Record saved before Park hold completed')
         saved=wait(lambda:(r if (r:=journal()).get('sessionId')==session_id and r.get('phase')=='SAVED' else None),'Service did not finish durable storage',60)
         trace=app_json('files/sensor-traces/'+session_id+'.json')
         queued=app_json('no_backup/driving-records/'+session_id+'.json')
         if not trace or not queued:raise RuntimeError('Exact session trace or queue file missing')
-        errors.extend(verify_continuity(snapshots,trace,session_id,queued))
+        errors.extend(verify_auto_continuity(snapshots,trace,session_id,queued,park_since))
         (output/'latest.json').write_text(json.dumps(trace,ensure_ascii=False,indent=2),encoding='utf-8')
         proof['offlineStored']=queued['state']=='PENDING'
         compose('start');web_stopped=False;wait(healthy,'API recovery failed',90)
@@ -213,8 +239,21 @@ def main():
         page=api('/api/driving-records?limit=50',token)
         if sum(r['sessionId']==session_id for r in page['items'])!=1:errors.append('Duplicate or missing server record')
         proof['recordId']=detail['id']
-        wait(lambda:'TripService' not in emu.shell('dumpsys','activity','services',PACKAGE),'Service did not release after saving')
-        proof['serviceReleased']=True
+        # A second D transition must create exactly one new session without pressing Start.
+        emu.request('/vehicle/gear','PUT',gear='Drive')
+        second=wait(lambda:(r if (r:=journal()).get('phase')=='RECORDING' and r.get('sessionId')!=session_id else None),'Second drive did not start')
+        second_id=second['sessionId'];owned.add(second_id)
+        time.sleep(2);emu.reset();time.sleep(2)
+        home();click_text(('자동 기록 설정','사용자 홈으로'));click_text('자동 기록 끄기')
+        wait(lambda:journal().get('sessionId')==second_id and journal().get('phase')=='SAVED' and not journal().get('armed'),'Turning automatic recording off did not save and stop')
+        wait(lambda:'TripService' not in emu.shell('dumpsys','activity','services',PACKAGE),'Service did not release after disabling')
+        floor=uptime()
+        emu.shell('am','force-stop','--user',emu.user,PACKAGE);home()
+        if preference():raise RuntimeError('Disabled preference did not persist')
+        emu.request('/vehicle/gear','PUT',gear='Drive');time.sleep(4)
+        if journal().get('sessionId')!=second_id or 'TripService' in emu.shell('dumpsys','activity','services',PACKAGE):raise RuntimeError('Disabled automatic recording started in D')
+        proof['disabledDoesNotStart']=True;proof['disabledSettingPersisted']=True
+        proof['secondSessionId']=second_id;proof['serviceReleased']=True
     except (Exception,KeyboardInterrupt) as exc:errors.append(type(exc).__name__+': '+str(exc))
     finally:
         if worker:
@@ -224,7 +263,7 @@ def main():
                 if restored['gear']['actual']['value']!='Park' or any(restored['controls'][k]!=0 for k in ('speed_kph','accelerator_pct','brake_pct','steering_deg')) or restored['lights']['turn_signal_mode']!='Off':
                     errors.append('Emulator restoration was not acknowledged')
             except Exception as exc:errors.append('Emulator restore: '+str(exc))
-            if errors and session_id and journal().get('sessionId')==session_id and journal().get('phase')=='RECORDING':
+            if errors and journal().get('sessionId') in owned and journal().get('phase') in ('RECORDING','PARK_WAIT','SAVING'):
                 emu.shell('am','force-stop','--user',emu.user,PACKAGE)
             stop.set();worker.join(timeout=5)
         if lease_started:
@@ -233,6 +272,13 @@ def main():
         if web_stopped:
             try:compose('start')
             except Exception as exc:errors.append('API restore: '+str(exc))
+        if settings_touched:
+            try:
+                home()
+                if preference()!=initial_enabled:
+                    if journal().get('phase') in ('RECORDING','PARK_WAIT','SAVING'):click_text(('자동 기록 설정','사용자 홈으로'))
+                    click_text('자동 기록 켜기' if initial_enabled else '자동 기록 끄기')
+            except Exception as exc:errors.append('Preference restore: '+str(exc))
         errors.extend(heartbeat_errors[:3])
         result={'passed':not errors,'sessionId':session_id,'stages':snapshots,'proof':proof,'errors':errors}
         (output/'result.json').write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
