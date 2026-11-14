@@ -4,6 +4,7 @@ import path from "node:path";
 const target = process.env.ROUTY_TARGET ?? "web";
 
 const nextConfig: NextConfig = {
+  devIndicators: false,
   env: {
     NEXT_PUBLIC_ROUTY_TARGET: target,
   },
