@@ -1,10 +1,10 @@
 name: Driving record API
 on:
   pull_request:
-    paths: ['apps/web/**', 'packages/contracts/**', 'pnpm-lock.yaml', '.github/workflows/driving-records.yml']
+    paths: ['apps/web/**', 'packages/contracts/**', 'patches/**', 'infra/services/check-api-routes.mjs', 'pnpm-workspace.yaml', 'pnpm-lock.yaml', '.github/workflows/driving-records.yml']
   push:
     branches: [main]
-    paths: ['apps/web/**', 'packages/contracts/**', 'pnpm-lock.yaml', '.github/workflows/driving-records.yml']
+    paths: ['apps/web/**', 'packages/contracts/**', 'patches/**', 'infra/services/check-api-routes.mjs', 'pnpm-workspace.yaml', 'pnpm-lock.yaml', '.github/workflows/driving-records.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -42,5 +42,6 @@ jobs:
         run: |
           pnpm dev > /tmp/routy-api.log 2>&1 &
           node --input-type=module -e 'for(let i=0;i<60;i++){try{if((await fetch("http://127.0.0.1:3000/api/health")).ok)process.exit(0)}catch{}await new Promise(r=>setTimeout(r,1000))}process.exit(1)'
+          node infra/services/check-api-routes.mjs
           pnpm --filter @routy/web test:records
           pnpm --filter @routy/web test:pairing

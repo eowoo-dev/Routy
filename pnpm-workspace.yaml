@@ -7,3 +7,6 @@ allowBuilds:
   esbuild: true
   prisma: true
   sharp: true
+
+patchedDependencies:
+  next@16.2.6: patches/next@16.2.6.patch

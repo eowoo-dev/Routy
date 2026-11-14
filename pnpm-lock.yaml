@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  next@16.2.6: 2b92a3cdd65df449fbda5434d3a2fc8dfe265c013fe444d2f9341671031bd0e0
+
 importers:
 
   .: {}
@@ -84,7 +87,7 @@ importers:
         version: 1.72.0(@types/react@19.3.0)(react@19.2.4)
       next:
         specifier: 16.2.6
-        version: 16.2.6(@babel/core@7.29.13)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        version: 16.2.6(patch_hash=2b92a3cdd65df449fbda5434d3a2fc8dfe265c013fe444d2f9341671031bd0e0)(@babel/core@7.29.13)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       nodemailer:
         specifier: ^9.0.3
         version: 9.1.1
@@ -7306,7 +7309,7 @@ snapshots:
 
   natural-compare@1.4.0: {}
 
-  next@16.2.6(@babel/core@7.29.13)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
+  next@16.2.6(patch_hash=2b92a3cdd65df449fbda5434d3a2fc8dfe265c013fe444d2f9341671031bd0e0)(@babel/core@7.29.13)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
     dependencies:
       '@next/env': 16.2.6
       '@swc/helpers': 0.5.15
