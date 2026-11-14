@@ -9,6 +9,7 @@ object JsonDocuments {
     private val moshi = Moshi.Builder().build()
     fun read(text: String): JsonObject = requireNotNull(moshi.adapter(Map::class.java).fromJson(text)).jsonObject()
     fun write(value: Any): String = moshi.adapter(Any::class.java).indent("  ").toJson(value)
+    fun compact(value: Any): String = moshi.adapter(Any::class.java).toJson(value)
 }
 
 internal fun Any?.jsonObject(): JsonObject {
