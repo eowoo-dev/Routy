@@ -101,11 +101,31 @@ def verify_long_recording(trace, checkpoints, session_id, minimum_ms):
     return errors
 
 
+def moving_checkpoint(row,session_id,after_ms,baseline):
+    return (row.get('sessionId')==session_id and row.get('phase')=='RECORDING' and row.get('gear')==8
+            and row.get('updatedMs',0)>=after_ms and row.get('samples',0)>=baseline+5)
+
+
+def verify_interrupted_record(item,session_id):
+    errors=[]
+    if item.get('sessionId')!=session_id:errors.append('Recovered session changed')
+    report=item.get('payload',{}).get('report',{})
+    if item.get('payload',{}).get('origin')!='LIVE':errors.append('Recovery did not use a live SDK recording')
+    if (report.get('recovery') or {}).get('status')!='INTERRUPTED':errors.append('Recovered recording was presented as normally completed')
+    if not any(f.get('id')=='interrupted-trip' for f in report.get('feedback',[])):errors.append('Interrupted feedback is missing')
+    if report.get('endMs',0)<=report.get('startMs',0):errors.append('No observed recovery duration')
+    archive=item.get('archive') or {}
+    if item.get('state')!='SENT' or archive.get('nextPart')!=archive.get('parts') or not archive.get('parts'):errors.append('Recovered archive transfer is incomplete')
+    if (item.get('receipt') or {}).get('sessionId')!=session_id:errors.append('Recovery receipt is missing or belongs to another drive')
+    return errors
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--serial',default='emulator-5554')
     parser.add_argument('--console-url',default='http://127.0.0.1:8088')
     parser.add_argument('--adb')
+    parser.add_argument('--recovery',action='store_true',help='Force-stop an actual SDK capture and verify interrupted archive recovery and upload')
     parser.add_argument('--long-seconds',type=int,default=0,help='Hold a real background drive for at least this many seconds (minimum 660)')
     args=parser.parse_args()
     if args.long_seconds and args.long_seconds<660:parser.error('--long-seconds must be at least 660')
@@ -164,7 +184,7 @@ def main():
             if node is not None:
                 x1,y1,x2,y2=map(int,re.findall(r'\d+',node.get('bounds','')))
                 if x2>x1 and y2>y1:
-                    emu.shell('input','tap',(x1+x2)//2,(y1+y2)//2);return
+                    emu.shell('input','tap',(x1+x2)//2,(y1+y2)//2);return node.get('text')
             scroll=next((n for n in root.iter('node') if n.get('package')==PACKAGE and n.get('scrollable')=='true'),None)
             if scroll is not None:
                 x1,y1,x2,y2=map(int,re.findall(r'\d+',scroll.get('bounds')))
@@ -174,6 +194,7 @@ def main():
     def home():emu.shell('am','start','-W','--user',emu.user,'-f','0x10008000','-a','android.intent.action.MAIN','-c','android.intent.category.LAUNCHER','-n',PACKAGE+'/com.noonmaru.routy.pleos.feature.trip.DrivingActivity')
     def stage(name,seconds=4):
         if heartbeat_errors:raise RuntimeError(heartbeat_errors[0])
+        baseline=journal().get('samples',0)
         until=time.monotonic()+seconds
         step=0
         while time.monotonic()<until:
@@ -181,7 +202,17 @@ def main():
             if name in ('drive-moving','background'):
                 emu.request('/vehicle/controls','PUT',speed=24,accelerator=0,brake=0,steering=[0,40,0,-40][step%4]);step+=1
             time.sleep(.5)
-        row=journal();row['name']=name;snapshots.append(row)
+        row=journal()
+        if name in ('drive-moving','background'):
+            after=uptime()
+            def observed():
+                nonlocal step
+                if heartbeat_errors:raise RuntimeError(heartbeat_errors[0])
+                emu.request('/vehicle/controls','PUT',speed=24,accelerator=0,brake=0,steering=[0,40,0,-40][step%4]);step+=1
+                current=journal()
+                return current if moving_checkpoint(current,session_id,after,baseline) else None
+            row=wait(observed,name+': fresh D checkpoint or speed acquisition unavailable',20)
+        row['name']=name;snapshots.append(row)
         if row.get('sessionId')!=session_id or row.get('phase') not in ('RECORDING','PARK_WAIT'):raise RuntimeError(name+': recorder stopped or session changed')
         print('INPUT',name,'samples',row.get('samples'),flush=True)
     try:
@@ -229,11 +260,13 @@ def main():
         emu.request('/vehicle/gear','PUT',gear='Neutral')
         wait(lambda:journal().get('gear')==1,'Neutral was not observed by the app');stage('neutral',3)
         emu.request('/vehicle/gear','PUT',gear='Drive')
+        wait(lambda:journal().get('gear')==8,'Drive was not observed after Neutral')
         emu.request('/vehicle/controls','PUT',speed=24,accelerator=0,brake=0,steering=0)
         stage('drive-moving',5)
         emu.reset();stage('short-park',3)
         if app_json('no_backup/driving-records/'+session_id+'.json'):raise RuntimeError('Short Park ended the recording')
-        emu.request('/vehicle/gear','PUT',gear='Drive');stage('resumed-drive',2)
+        emu.request('/vehicle/gear','PUT',gear='Drive')
+        wait(lambda:journal().get('gear')==8,'Drive was not observed after short Park');stage('resumed-drive',2)
         if journal().get('parkSinceMs') is not None:raise RuntimeError('D did not cancel the Park countdown')
         emu.request('/vehicle/controls','PUT',speed=24,accelerator=0,brake=0,steering=0)
         # A stopped Activity is required evidence; simply obscuring the screen is insufficient.
@@ -302,6 +335,28 @@ def main():
         emu.request('/vehicle/gear','PUT',gear='Drive')
         second=wait(lambda:(r if (r:=journal()).get('phase')=='RECORDING' and r.get('sessionId')!=session_id else None),'Second drive did not start')
         second_id=second['sessionId'];owned.add(second_id)
+        if args.recovery:
+            time.sleep(5)
+            interrupted_id=second_id
+            emu.shell('am','force-stop','--user',emu.user,PACKAGE)
+            emu.reset();time.sleep(2);home()
+            def recovered_upload():
+                item=app_json('no_backup/driving-records/'+interrupted_id+'.json')
+                if item and item['state']=='FAILED':raise RuntimeError('Interrupted upload failed: '+str(item.get('error')))
+                return item if item and item['state']=='SENT' else None
+            recovered=wait(recovered_upload,'Interrupted SDK recording was not recovered and uploaded',180)
+            report=recovered['payload']['report']
+            recovery_errors=verify_interrupted_record(recovered,interrupted_id)
+            if recovery_errors:raise RuntimeError('; '.join(recovery_errors))
+            restored=api('/api/driving-records/'+interrupted_id,token)
+            if restored['report']!=report:raise RuntimeError('Recovered report differs from uploaded immutable result')
+            emu.shell('am','force-stop','--user',emu.user,PACKAGE);home();time.sleep(3)
+            if app_json('no_backup/driving-records/'+interrupted_id+'.json')!=recovered:raise RuntimeError('Restart changed the recovered payload or transfer receipt')
+            proof['interruptedRecovery']={'sessionId':interrupted_id,'serverReportMatches':True,'idempotentRestart':True}
+            wait(lambda:journal().get('armed'),'Automatic recording did not re-arm after recovery')
+            emu.request('/vehicle/gear','PUT',gear='Drive')
+            third=wait(lambda:(r if (r:=journal()).get('phase')=='RECORDING' and r.get('sessionId') not in owned else None),'Recovery prevented the next drive')
+            second_id=third['sessionId'];owned.add(second_id)
         time.sleep(2);emu.reset();time.sleep(2)
         home();click_text(('자동 기록 설정','사용자 홈으로'));click_text('자동 기록 끄기')
         wait(lambda:journal().get('sessionId')==second_id and journal().get('phase')=='SAVED' and not journal().get('armed'),'Turning automatic recording off did not save and stop')
@@ -335,10 +390,13 @@ def main():
             try:
                 home()
                 if preference()!=initial_enabled:
-                    if journal().get('phase') in ('RECORDING','PARK_WAIT','SAVING'):click_text(('자동 기록 설정','사용자 홈으로'))
-                    click_text('자동 기록 켜기' if initial_enabled else '자동 기록 끄기')
+                    target='자동 기록 켜기' if initial_enabled else '자동 기록 끄기'
+                    for _ in range(3):
+                        if click_text((target,'자동 기록 설정','사용자 홈으로'))==target:break
+                    wait(lambda:preference()==initial_enabled,'Original automatic recording preference was not restored')
             except Exception as exc:errors.append('Preference restore: '+str(exc))
         errors.extend(heartbeat_errors[:3])
+        proof['consoleTransportRetries']=getattr(emu,'transport_retries',0)
         result={'passed':not errors,'sessionId':session_id,'stages':snapshots,'longCheckpoints':long_checkpoints,'proof':proof,'errors':errors}
         (output/'result.json').write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
     print('PASS' if not errors else 'FAIL',json.dumps(errors,ensure_ascii=False),flush=True)

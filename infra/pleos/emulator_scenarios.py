@@ -1,4 +1,5 @@
 """Fixed Pleos emulator integration test. Python standard library only; never targets real cars."""
+import http.client
 import argparse
 from datetime import datetime, timezone
 import json
@@ -159,8 +160,18 @@ class Emulator:
 
     def request(self, path, method="GET", **params):
         suffix = "?" + urllib.parse.urlencode(params) if params else ""
-        with urllib.request.urlopen(urllib.request.Request(self.base + path + suffix, method=method), timeout=4) as response:
-            return json.load(response)
+        retryable=(method=="GET" and path=="/vehicle/state") or (method=="PUT" and path in ("/vehicle/gear","/vehicle/controls","/vehicle/turn-signal")) or (method=="POST" and path=="/browser/session" and bool(params.get("client")))
+        attempts=3 if retryable else 1
+        for attempt in range(attempts):
+            try:
+                with urllib.request.urlopen(urllib.request.Request(self.base + path + suffix, method=method), timeout=4) as response:
+                    return json.load(response)
+            except urllib.error.HTTPError:
+                raise
+            except (http.client.RemoteDisconnected,urllib.error.URLError,TimeoutError,ConnectionResetError):
+                if attempt+1==attempts:raise
+                self.transport_retries=getattr(self,'transport_retries',0)+1
+                time.sleep(.15*(attempt+1))
 
     def uptime_ms(self):
         return int(float(self.shell("cat","/proc/uptime").split()[0])*1000)
