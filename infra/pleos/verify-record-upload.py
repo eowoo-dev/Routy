@@ -70,7 +70,7 @@ def main():
         for session_id in offline:assert local(session_id)["state"]=="PENDING"
         print("PASS two offline records retained",flush=True)
         shell("am","force-stop","--user",user,PACKAGE)
-        shell("am","start","-W","--user",user,"-n",PACKAGE+"/com.noonmaru.routy.pleos.MainActivity")
+        shell("am","start","-W","--user",user,"-a","android.intent.action.MAIN","-c","android.intent.category.LAUNCHER","-n",PACKAGE+"/com.noonmaru.routy.pleos.feature.trip.DrivingActivity")
         for session_id in offline:assert local(session_id)["state"]=="PENDING"
         print("PASS queue survived process restart",flush=True)
         compose("start");stopped=False

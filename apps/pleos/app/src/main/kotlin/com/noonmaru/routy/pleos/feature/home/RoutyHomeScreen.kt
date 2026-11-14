@@ -49,6 +49,10 @@ fun RoutyHomeScreen(onDiagnostics:()->Unit,model:ConnectionViewModel=viewModel()
         onDispose {owner.lifecycle.removeObserver(observer);model.foreground(false)}
     }
     val access by com.noonmaru.routy.pleos.feature.trip.DrivingAccess.state.collectAsStateWithLifecycle()
+    val context=androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(access.known,access.parked) {
+        if(access.known && !access.parked)context.startActivity(android.content.Intent(context,com.noonmaru.routy.pleos.feature.trip.DrivingActivity::class.java).addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP))
+    }
     RoutyTheme {
         Surface(Modifier.fillMaxSize(),color=MaterialTheme.colorScheme.background) {
             if(!access.parked) {
