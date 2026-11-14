@@ -18,7 +18,7 @@ class EnvironmentIntegrationTest {
     @Test fun integratedReportAndCompleteTraceRoundTrip() {
         val input=session()
         val report=DrivingEvaluationEngine().evaluate(input)
-        assertEquals("0.6.0",report.engineVersion)
+        assertEquals("0.7.0",report.engineVersion)
         assertNotNull(report.environment)
         assertTrue(report.assessments.first { it.category==Category.LANE_KEEPING }.eligibleMs>0)
         val document=JsonDocuments.read(JsonDocuments.write(TraceReplay.recording(input,report)))

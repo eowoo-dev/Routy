@@ -12,6 +12,36 @@ data class EnvironmentClockMapping(val offsetMs: Long, val uncertaintyMs: Long) 
 data class AlignedEnvironmentFrame(val frame: EnvironmentFrame, val sessionAtMs: Long, val uncertaintyMs: Long, val serverAtMs: Long? = null)
 
 object EnvironmentIntegration {
+    fun prepare(session:DrivingSession):Pair<List<EnvironmentFrame>,List<EnvironmentIssue>> {
+        val issues=mutableListOf<EnvironmentIssue>()
+        val rows=session.environment
+        val invalidSdkOrder=session.speeds.zipWithNext().any { (a,b)->b.atMs<=a.atMs }
+        val frames=rows.mapIndexed { index,row ->
+            val f=row.frame
+            val speed=session.speeds.lastOrNull { it.atMs<=row.sessionAtMs }
+            val previous=rows.getOrNull(index-1)
+            val reason=when {
+                row.sessionAtMs !in session.startMs..session.endMs -> EnvironmentReason.INVALID_SAMPLE
+                row.uncertaintyMs !in 0..100 -> EnvironmentReason.CLOCK_UNCERTAIN
+                !f.available -> EnvironmentReason.UNAVAILABLE
+                absScope(f) -> EnvironmentReason.OUT_OF_SCOPE
+                !EnvironmentEvaluation.usable(f) -> EnvironmentReason.INVALID_SAMPLE
+                previous!=null && (row.sessionAtMs<=previous.sessionAtMs || (f.runId==previous.frame.runId && f.sequence<=previous.frame.sequence)) -> EnvironmentReason.DUPLICATE
+                session.origin!=DataOrigin.SYNTHETIC && invalidSdkOrder -> EnvironmentReason.DUPLICATE
+                session.origin!=DataOrigin.SYNTHETIC && session.speedGaps.any { row.sessionAtMs in it.startMs until it.endMs } -> EnvironmentReason.SDK_GAP
+                session.origin!=DataOrigin.SYNTHETIC && (speed?.available!=true || speed.value==null || row.sessionAtMs-speed.atMs !in 0..500 || !speed.value.isFinite()) -> EnvironmentReason.SDK_MISSING
+                session.origin!=DataOrigin.SYNTHETIC && kotlin.math.abs(speed!!.value!!-f.speed)>2 -> EnvironmentReason.SDK_MISMATCH
+                else -> null
+            }
+            if(reason!=null)issues+=EnvironmentIssue(row.sessionAtMs.coerceIn(session.startMs,session.endMs),
+                (rows.getOrNull(index+1)?.sessionAtMs ?: session.endMs).coerceIn(row.sessionAtMs.coerceIn(session.startMs,session.endMs),session.endMs),reason)
+            val selection=if(session.origin==DataOrigin.SYNTHETIC) f.signal else if(session.hazardStateKnown && session.signalSemantics==SignalSemantics.SELECTION_STATE)
+                session.signals.lastOrNull { it.atMs<=row.sessionAtMs && row.sessionAtMs-it.atMs<=500 }?.takeIf { it.available }?.value?.name ?: "UNKNOWN" else "UNKNOWN"
+            f.copy(atMs=row.sessionAtMs,available=reason==null,signal=selection.takeIf { it in setOf("OFF","LEFT","RIGHT") } ?: "UNKNOWN")
+        }
+        return frames to issues
+    }
+    private fun absScope(f:EnvironmentFrame)=f.d.isFinite() && (kotlin.math.abs(f.d)>5.55 || kotlin.math.abs(f.heading)>=Math.PI/2)
     fun encode(rows: List<AlignedEnvironmentFrame>): List<JsonObject> = rows.map { row ->
         mapOf("sessionAtMs" to row.sessionAtMs,"uncertaintyMs" to row.uncertaintyMs,"serverAtMs" to row.serverAtMs,"frame" to encodeFrame(row.frame))
     }
@@ -22,39 +52,20 @@ object EnvironmentIntegration {
     fun decode(rows: List<JsonObject>): List<AlignedEnvironmentFrame> = rows.map { row ->
         AlignedEnvironmentFrame(EnvironmentEvaluation.decode(JsonDocuments.write(mapOf("frames" to listOf(row["frame"])))) .single(),row.long("sessionAtMs"),row.long("uncertaintyMs"),if(row["serverAtMs"]==null) null else row.long("serverAtMs"))
     }
-    fun frames(session: DrivingSession): List<EnvironmentFrame> = session.environment.map { row ->
-        val f=row.frame
-        val speed=session.speeds.lastOrNull { it.atMs<=row.sessionAtMs && row.sessionAtMs-it.atMs<=500 }
-        val synchronized= row.uncertaintyMs in 0..100 && row.sessionAtMs in session.startMs..session.endMs &&
-            session.speeds.zipWithNext().all { (a,b) -> b.atMs>a.atMs } &&
-            session.speedGaps.none { row.sessionAtMs in it.startMs until it.endMs } && speed?.available==true &&
-            speed.value?.let { kotlin.math.abs(it-f.speed)<=2 } == true
-        val sdkSignal=if(session.hazardStateKnown && session.signalSemantics==SignalSemantics.SELECTION_STATE)
-            session.signals.lastOrNull { it.atMs<=row.sessionAtMs && row.sessionAtMs-it.atMs<=500 }?.takeIf { it.available }?.value?.name else null
-        f.copy(atMs=row.sessionAtMs,available=EnvironmentEvaluation.usable(f) && synchronized,signal=sdkSignal?.takeIf { it in setOf("OFF","LEFT","RIGHT") } ?: "UNKNOWN")
-    }
+    fun frames(session:DrivingSession):List<EnvironmentFrame> = prepare(session).first
     fun assess(session: DrivingSession, frames: List<EnvironmentFrame>, result: EnvironmentResult): List<Assessment> {
-        val intervals=frames.zipWithNext().filter { (a,b) ->
-            a.available && b.available && a.runId==b.runId && b.sequence>a.sequence && b.atMs-a.atMs in 1..250 && kotlin.math.abs(b.s-a.s)<20 && kotlin.math.abs(b.d-a.d)<2
-        }
-        return listOf(Category.LANE_KEEPING,Category.TRAFFIC_SIGNAL_RESPONSE,Category.FOLLOWING_DISTANCE).map { category ->
-            val eligible=intervals.sumOf { (a,b) ->
-                if(category==Category.LANE_KEEPING && result.events.any { it.kind in setOf("LANE_CHANGE_LEFT","LANE_CHANGE_RIGHT","MULTI_LANE_CHANGE_LEFT","MULTI_LANE_CHANGE_RIGHT") && it.startMs<b.atMs && it.endMs>a.atMs }) 0L else b.atMs-a.atMs
-            }.coerceAtMost(session.durationMs)
-            val hasOpportunity=when(category) {
-                Category.FOLLOWING_DISTANCE -> frames.any { f -> f.available && f.vehicles.any { it.s>f.s && kotlin.math.abs(it.d-f.d)<(it.width+1.8)/2 } }
-                Category.TRAFFIC_SIGNAL_RESPONSE -> frames.any { it.available && it.stopLineS-it.s in 0.0..100.0 }
-                else -> frames.any { it.available && it.speed>1 }
-            }
-            Assessment(category,when { eligible==0L -> AssessmentStatus.NOT_ASSESSED; eligible<session.durationMs -> AssessmentStatus.PARTIAL; !hasOpportunity -> AssessmentStatus.NO_OPPORTUNITY; else -> AssessmentStatus.ASSESSED },
-                eligibleMs=eligible,excludedMs=session.durationMs-eligible,
-                reasons=if(eligible<session.durationMs) setOf(ExclusionReason.ENVIRONMENT_DATA_REQUIRED) else emptySet())
-        }
+        result.review?.let { review -> return listOf(Category.LANE_KEEPING,Category.TRAFFIC_SIGNAL_RESPONSE,Category.FOLLOWING_DISTANCE).map { category ->
+            val q=review.quality.first { it.channel==category.name }
+            Assessment(category,when { q.eligibleMs>0 && q.excludedMs==0L -> AssessmentStatus.ASSESSED; q.eligibleMs>0 -> AssessmentStatus.PARTIAL; q.excludedMs==0L -> AssessmentStatus.NO_OPPORTUNITY; else -> AssessmentStatus.NOT_ASSESSED },
+                eligibleMs=q.eligibleMs,excludedMs=q.excludedMs,reasons=q.reasons.keys.mapNotNull { runCatching { ExclusionReason.valueOf("ENV_"+it) }.getOrNull() }.toSet())
+        } }
+        return LegacyEnvironmentIntegration.assess(session,frames,result)
     }
-    fun feedback(result: EnvironmentResult): List<LearningFeedback> = result.events.mapIndexed { index,event ->
-        LearningFeedback("environment-$index",event.startMs,event.endMs,ReviewPriority.REVIEW,event.feedback,
-            "가상 환경에서 관측한 결과입니다.","같은 시나리오를 다시 연습하며 주변 여유와 신호를 확인해보세요.",
-            if(event.kind.contains("UNAVAILABLE") || event.kind.contains("UNCERTAIN") || event.kind.contains("INCOMPLETE")) EvidenceStrength.LIMITED else EvidenceStrength.SUPPORTED,
-            mapOf("source" to result.source,"event" to event.kind,"detail" to event.detail),emptySet())
-    }
+    fun feedback(result:EnvironmentResult):List<LearningFeedback> = LegacyEnvironmentIntegration.feedback(result)
+    fun groupedFeedback(result:EnvironmentResult):List<LearningFeedback> = result.review?.groups?.map { group ->
+        LearningFeedback(group.id,group.startMs,group.endMs,if(group.limited) ReviewPriority.DATA_CHECK else ReviewPriority.REVIEW,group.title,
+            "가상 환경 관측 · "+group.kinds.joinToString(),group.nextPractice,if(group.limited) EvidenceStrength.LIMITED else EvidenceStrength.SUPPORTED,
+            group.evidence.mapValues { it.value.toString() }+mapOf("source" to result.source,"events" to group.kinds.joinToString()),
+            if(group.limited) setOf("관측 또는 완료 여부 불확실") else emptySet())
+    } ?: feedback(result)
 }

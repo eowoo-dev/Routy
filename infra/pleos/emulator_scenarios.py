@@ -48,11 +48,19 @@ def require_sole_console_writer(lease):
         raise RuntimeError(f"Virtual Console input conflict: expected the test's single session, got {count}. Keep all Virtual Console browser tabs closed until the test finishes")
 
 
+def is_new_trace(value, previous, attempt_floor, now_ms):
+    # Persisted files survive emulator reboots; elapsedRealtime does not.
+    # Both a changed document and this boot's acquisition window are required.
+    start, end = value.get("startMs"), value.get("endMs")
+    return (value != previous and type(start) is int and type(end) is int
+            and attempt_floor < start < end <= now_ms+1000)
+
+
 def verify_environment_trace(trace):
     rows = trace.get("environment", [])
     errors = []
-    if trace.get("engineVersion") != "0.6.0" or len(rows) < 50:
-        errors.append("Expected an integrated 0.6.0 trace with at least 50 environment observations")
+    if trace.get("engineVersion") != "0.7.0" or len(rows) < 50:
+        errors.append("Expected an integrated 0.7.0 trace with at least 50 environment observations")
     if any(not trace["startMs"] <= row["sessionAtMs"] <= trace["endMs"] or row.get("serverAtMs") is None or row["frame"].get("source") != "SIMULATED_ENVIRONMENT" for row in rows):
         errors.append("Environment provenance or aligned timestamps are invalid")
     keys = [(row["frame"].get("runId"), row["frame"].get("sequence")) for row in rows]
@@ -62,9 +70,22 @@ def verify_environment_trace(trace):
     if analysis.get("environment", {}).get("source") != "SIMULATED_ENVIRONMENT":
         errors.append("Integrated report lost simulated environment provenance")
     categories = {a["category"]: a for a in analysis.get("assessments", [])}
+    quality = {q["channel"]: q for q in analysis.get("environment", {}).get("review", {}).get("quality", [])}
     for category in ("LANE_KEEPING", "TRAFFIC_SIGNAL_RESPONSE", "FOLLOWING_DISTANCE"):
-        if categories.get(category, {}).get("eligibleMs", 0) < 1000:
+        q = quality.get(category, {})
+        values = [q.get(key) for key in ("totalMs", "eligibleMs", "noOpportunityMs", "excludedMs")]
+        if not all(type(value) is int and value >= 0 for value in values):
+            errors.append(f"{category}: missing or invalid environment quality partition")
+            continue
+        total, eligible, no_opportunity, excluded = values
+        if total != trace["endMs"]-trace["startMs"] or eligible+no_opportunity+excluded != total:
+            errors.append(f"{category}: inconsistent quality duration")
+        # The SDK acquisition fixture may never approach the stop line. Valid observations
+        # without a target are evidence of integration, not time spent evaluating a target.
+        if eligible+no_opportunity < 1000:
             errors.append(f"{category}: insufficient aligned environment coverage")
+        if categories.get(category, {}).get("eligibleMs") != eligible or categories.get(category, {}).get("excludedMs") != excluded:
+            errors.append(f"{category}: assessment and environment quality differ")
     return errors
 
 
@@ -202,9 +223,9 @@ def run(args):
         if state["gear"]["actual"]["value"] != "Park" or state["controls"]["speed_kph"] != 0:
             raise RuntimeError("Start the fixed test in Park at 0km/h")
         try:
-            previous_start = emu.trace()["startMs"]
+            previous_trace = emu.trace()
         except (json.JSONDecodeError, KeyError):
-            previous_start = -1
+            previous_trace = None
         worker = threading.Thread(target=heartbeat, daemon=True)
         worker.start()
         if getattr(args, "environment", False):
@@ -233,7 +254,7 @@ def run(args):
         time.sleep(2)
         # A previous incomplete/foreign recording cannot satisfy the current attempt's freshness.
         attempt_floor = int(float(emu.shell("cat", "/proc/uptime").split()[0]) * 1000) - 1000
-        previous_start = max(previous_start, attempt_floor)
+        previous_start = attempt_floor
         emu.start_capture()
         began = time.monotonic()
         time.sleep(3)
@@ -261,7 +282,8 @@ def run(args):
         while time.monotonic() < deadline:
             try:
                 value = emu.trace()
-                if value["startMs"] > previous_start:
+                now_ms = int(float(emu.shell("cat", "/proc/uptime").split()[0])*1000)
+                if is_new_trace(value,previous_trace,attempt_floor,now_ms):
                     trace = value
                     break
             except (json.JSONDecodeError, KeyError):

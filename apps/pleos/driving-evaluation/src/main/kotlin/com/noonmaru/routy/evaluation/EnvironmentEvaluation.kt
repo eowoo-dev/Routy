@@ -7,7 +7,8 @@ data class EnvironmentVehicle(val id: String, val s: Double, val d: Double, val 
 data class EnvironmentFrame(val runId: String, val sequence: Long, val atMs: Long, val s: Double, val d: Double,
     val heading: Double, val speed: Double, val signal: String, val vehicles: List<EnvironmentVehicle>,
     val light: String, val stopLineS: Double, val available: Boolean = true)
-data class EnvironmentEvent(val kind: String, val startMs: Long, val endMs: Long, val detail: String) {
+data class EnvironmentEvent(val kind: String, val startMs: Long, val endMs: Long, val detail: String,
+    val evidence: Map<String,Double> = emptyMap(),val subjectId:String? = null) {
     val feedback: String get() = when(kind) {
         "LANE_CHANGE_LEFT" -> "왼쪽 차로로 이동한 뒤 안정됐어요"
         "LANE_CHANGE_RIGHT" -> "오른쪽 차로로 이동한 뒤 안정됐어요"
@@ -33,7 +34,7 @@ data class EnvironmentEvent(val kind: String, val startMs: Long, val endMs: Long
         else -> "방향지시등 관측이 부족해 사용 평가를 보류했어요"
     }
 }
-data class EnvironmentResult(val source: String, val frames: Int, val excluded: Int, val events: List<EnvironmentEvent>)
+data class EnvironmentResult(val source: String, val frames: Int, val excluded: Int, val events: List<EnvironmentEvent>,val review:EnvironmentReview? = null)
 
 /** Experimental learning feedback, not a legal or safety certification. No network or renderer dependency. */
 object EnvironmentEvaluation {
@@ -51,7 +52,8 @@ object EnvironmentEvaluation {
             }, f.string("light"), f.number("stopLineS"), f.boolean("available"))
     }
 
-    fun evaluate(frames: List<EnvironmentFrame>): EnvironmentResult {
+    fun evaluate(frames: List<EnvironmentFrame>, detailed:Boolean=true, issues:List<EnvironmentIssue> = emptyList(),
+        startMs:Long=frames.minOfOrNull { it.atMs.coerceAtLeast(0) } ?: 0,endMs:Long=frames.maxOfOrNull { it.atMs.coerceAtLeast(startMs) } ?: startMs): EnvironmentResult {
         val events = mutableListOf<EnvironmentEvent>()
         var previous: EnvironmentFrame? = null
         var lane: Int? = null
@@ -155,6 +157,9 @@ object EnvironmentEvaluation {
             previous=f
         }
         reset()
-        return EnvironmentResult("SIMULATED_ENVIRONMENT",frames.size,excluded,events.sortedBy { it.startMs })
+        val ordered=events.sortedBy { it.startMs }
+        if(!detailed)return EnvironmentResult("SIMULATED_ENVIRONMENT",frames.size,excluded,ordered)
+        val enriched=EnvironmentReviewBuilder.enrich(frames,ordered)
+        return EnvironmentResult("SIMULATED_ENVIRONMENT",frames.size,excluded,enriched,EnvironmentReviewBuilder.build(frames,enriched,issues,startMs,endMs))
     }
 }

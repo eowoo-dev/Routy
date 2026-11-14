@@ -26,13 +26,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.isActive
 
 sealed interface EvaluationState {
     data object Idle : EvaluationState
     data class Recording(val samples: Int, val status: String) : EvaluationState
     data class Finished(val report: EvaluationReport, val detail: String) : EvaluationState
     data class Unavailable(val message: String) : EvaluationState
-    data class EnvironmentFinished(val result: EnvironmentResult) : EvaluationState
 }
 
 /** Short, foreground-only acquisition check. Not a background trip recorder. */
@@ -48,6 +49,79 @@ class EvaluationViewModel(application: Application) : AndroidViewModel(applicati
     private var capture: Capture? = null
     private var deadline: Job? = null
     private var generation = 0L
+    private var scenarioJob:Job?=null
+    private val mutableScenarioStatus=MutableStateFlow("")
+    val scenarioStatus=mutableScenarioStatus.asStateFlow()
+    private var lastScenarioRun:String?=null
+
+    fun watchScenarios() {
+        if(!com.noonmaru.routy.pleos.BuildConfig.DEBUG)return
+        cancelCapture()
+        lastScenarioRun=null
+        val requestedGeneration=generation
+        mutableScenarioStatus.value="콘솔 연결 중"
+        scenarioJob=viewModelScope.launch {
+            val client=ScenarioSource()
+            while(isActive && generation==requestedGeneration) {
+                try {
+                    val snapshot=withContext(Dispatchers.IO) { client.state() }
+                    mutableScenarioStatus.value=when(snapshot.status) {
+                        "running" -> "시나리오 실행 중 · 완료되면 자동 분석합니다"
+                        "completed" -> "시나리오 완료 · 다음 실행도 자동 분석합니다"
+                        "stopped" -> "시나리오 일시 정지 · 완료 전에는 평가하지 않습니다"
+                        else -> "콘솔 연결됨 · 시나리오 시작을 기다립니다"
+                    }
+                    if(snapshot.status=="completed" && snapshot.runId!=lastScenarioRun) {
+                        val frames=withContext(Dispatchers.IO) { client.completed(snapshot) }
+                        val report=withContext(Dispatchers.Default) { engine.evaluate(ScenarioReview.session(frames)) }
+                        val document=ScenarioReview.recording(frames,report)
+                        // Validate the stored representation too, before publishing a review.
+                        withContext(Dispatchers.Default) {
+                            val restored=JsonDocuments.read(JsonDocuments.write(document))
+                            TraceReplay.verifyCaptured(restored,engine.evaluate(TraceReplay.session(restored)))
+                        }
+                        if(generation==requestedGeneration) {
+                            withContext(Dispatchers.IO) { saveScenario(document) }
+                            lastScenarioRun=snapshot.runId
+                            mutableState.value=EvaluationState.Finished(report,"${snapshot.scenarioId} 완료 · 합성 환경 기록 자동 분석\n저장: files/scenario-reviews/latest.json")
+                            logReport(report)
+                        }
+                    }
+                } catch(e:CancellationException) { throw e
+                } catch(e:Exception) { mutableScenarioStatus.value="콘솔 연결·분석 대기: ${e.message} · 자동 재시도합니다" }
+                delay(1000)
+            }
+        }
+    }
+
+    private fun saveScenario(document:JsonObject) {
+        val root=File(getApplication<Application>().filesDir,"scenario-reviews").apply { mkdirs() }
+        android.util.AtomicFile(File(root,"latest.json")).let { file ->
+            val output=file.startWrite()
+            try { output.write(JsonDocuments.write(document).toByteArray(Charsets.UTF_8)); file.finishWrite(output) }
+            catch(e:Exception) { file.failWrite(output); throw e }
+        }
+    }
+
+    fun replaySavedScenario() {
+        cancelCapture()
+        val requestedGeneration=generation
+        viewModelScope.launch {
+            try {
+                val report=withContext(Dispatchers.IO) {
+                    val file=File(getApplication<Application>().filesDir,"scenario-reviews/latest.json")
+                    val text=android.util.AtomicFile(file).openRead().use { input ->
+                        require(file.length() in 1..4_194_304) { "저장된 시나리오 기록이 없거나 용량을 초과했습니다" }
+                        input.bufferedReader().use { it.readText() }
+                    }
+                    val document=JsonDocuments.read(text)
+                    engine.evaluate(TraceReplay.session(document)).also { TraceReplay.verifyCaptured(document,it) }
+                }
+                if(generation==requestedGeneration)mutableState.value=EvaluationState.Finished(report,"저장된 합성 시나리오 재생 · 원래 분석 결과 일치 확인")
+            } catch(e:CancellationException) { throw e
+            } catch(e:Exception) { if(generation==requestedGeneration)mutableState.value=EvaluationState.Unavailable("기록 재생 실패: ${e.message}") }
+        }
+    }
 
     fun analyzeEnvironment() {
         if (!com.noonmaru.routy.pleos.BuildConfig.DEBUG) return
@@ -56,15 +130,12 @@ class EvaluationViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch {
             try {
                 val result=withContext(Dispatchers.IO) {
-                    val connection=java.net.URL("http://127.0.0.1:8090/routy/trace").openConnection() as java.net.HttpURLConnection
-                    connection.connectTimeout=3000; connection.readTimeout=3000
-                    val text=try { connection.inputStream.bufferedReader().use { it.readText() } } finally { connection.disconnect() }
-                    val frames=EnvironmentEvaluation.decode(text)
-                    require(frames.isNotEmpty()) { "환경 관측이 없습니다" }
-                    File(getApplication<Application>().filesDir,"environment-trace.json").writeText(text)
-                    EnvironmentEvaluation.evaluate(frames)
+                    val client=ScenarioSource()
+                    val frames=client.completed(client.state())
+                    engine.evaluate(ScenarioReview.session(frames))
                 }
-                if(generation==requestedGeneration) mutableState.value=EvaluationState.EnvironmentFinished(result)
+                if(generation==requestedGeneration) mutableState.value=EvaluationState.Finished(result,"가상 환경 수동 분석 · 합성 데이터")
+            } catch(e:CancellationException) { throw e
             } catch(e: Exception) {
                 if(generation==requestedGeneration) mutableState.value=EvaluationState.Unavailable("가상 환경 수집 실패: ${e.message}")
             }
@@ -221,6 +292,8 @@ class EvaluationViewModel(application: Application) : AndroidViewModel(applicati
 
     fun cancelCapture() {
         generation++
+        scenarioJob?.cancel(); scenarioJob=null
+        mutableScenarioStatus.value=""
         capture?.environmentJob?.cancel()
         deadline?.cancel()
         deadline = null

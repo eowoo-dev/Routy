@@ -42,10 +42,17 @@ fun main(args: Array<String>) {
             scenario.strings("forbidden").filter { it in kinds }.forEach { errors+="Unexpected event: $it" }
             if(report.excluded!=0) errors+="Excluded frames: ${report.excluded}"
             if(EnvironmentEvaluation.evaluate(frames)!=report) errors+="Replay is not deterministic"
+            val analysis=DrivingEvaluationEngine().evaluate(ScenarioReview.session(frames))
+            val recorded=JsonDocuments.read(JsonDocuments.write(ScenarioReview.recording(frames,analysis)))
+            TraceReplay.verifyCaptured(recorded,DrivingEvaluationEngine().evaluate(TraceReplay.session(recorded)))
+            if(analysis.environment!=report)errors+="App scenario analysis differs from direct evaluation"
+            analysis.environment!!.review!!.quality.forEach { q ->
+                if(q.eligibleMs+q.noOpportunityMs+q.excludedMs!=q.totalMs)errors+="Coverage partition differs: ${q.channel}"
+            }
             scenario.objects("checks").filter { !it.boolean("passed") }.forEach { errors+="Geometry check failed: ${it.string("label")}" }
             println("${if(errors.isEmpty()) "PASS" else "FAIL"} ${scenario.string("id")}: $errors")
             mapOf("id" to scenario.string("id"),"passed" to errors.isEmpty(),"errors" to errors,
-                "frames" to frames.size,"excluded" to report.excluded,"events" to report.events.map { mapOf("kind" to it.kind,"startMs" to it.startMs,"endMs" to it.endMs) })
+                "frames" to frames.size,"excluded" to report.excluded,"events" to report.events.map { mapOf("kind" to it.kind,"startMs" to it.startMs,"endMs" to it.endMs) },"analysis" to TraceReplay.summary(analysis),"recording" to recorded)
         }
         if("--output" in args) java.io.File(args[args.indexOf("--output")+1]).also { it.parentFile?.mkdirs() }
             .writeText(JsonDocuments.write(mapOf("suite" to suite.string("suite"),"results" to results)))
@@ -57,8 +64,7 @@ fun main(args: Array<String>) {
         require(index+1<args.size)
         val frames=EnvironmentEvaluation.decode(java.io.File(args[index+1]).readText())
         val report=EnvironmentEvaluation.evaluate(frames)
-        val output=mapOf("source" to report.source,"frames" to report.frames,"excluded" to report.excluded,
-            "events" to report.events.map { mapOf("kind" to it.kind,"startMs" to it.startMs,"endMs" to it.endMs,"detail" to it.detail) })
+        val output=EnvironmentReviewCodec.summary(report)
         val json=JsonDocuments.write(output)
         println(json)
         if("--output" in args) java.io.File(args[args.indexOf("--output")+1]).also { it.parentFile?.mkdirs() }.writeText(json)

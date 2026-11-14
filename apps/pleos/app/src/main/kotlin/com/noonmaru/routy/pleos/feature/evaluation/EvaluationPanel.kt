@@ -40,6 +40,7 @@ import java.util.Locale
 @Composable
 fun EvaluationPanel(model: EvaluationViewModel = viewModel()) {
     val state by model.state.collectAsStateWithLifecycle()
+    val scenarioStatus by model.scenarioStatus.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val owner = LocalLifecycleOwner.current
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
@@ -66,14 +67,17 @@ fun EvaluationPanel(model: EvaluationViewModel = viewModel()) {
             Text("실제 센서 전체 30초 수집·분석")
         }
         if (com.noonmaru.routy.pleos.BuildConfig.DEBUG) {
+            OutlinedButton(onClick=if(scenarioStatus.isEmpty()) model::watchScenarios else model::cancelCapture,
+                enabled=state !is EvaluationState.Recording,modifier=Modifier.heightIn(min=64.dp)) {
+                Text(if(scenarioStatus.isEmpty()) "시나리오 완료 자동 분석 연결" else "자동 분석 연결 해제")
+            }
+            if(scenarioStatus.isNotEmpty())Text(scenarioStatus)
+            OutlinedButton(onClick=model::replaySavedScenario,enabled=state !is EvaluationState.Recording,
+                modifier=Modifier.heightIn(min=64.dp)) { Text("저장된 시나리오 복습") }
             OutlinedButton(onClick=model::analyzeEnvironment, enabled=state !is EvaluationState.Recording,
-                modifier=Modifier.heightIn(min=64.dp)) { Text("가상 환경 기록 분석") }
+                modifier=Modifier.heightIn(min=64.dp)) { Text("완료된 환경 기록 분석") }
         }
         when (val current = state) {
-            is EvaluationState.EnvironmentFinished -> {
-                Text("가상 환경 분석 · ${current.result.frames} 프레임 · 제외 ${current.result.excluded}개")
-                current.result.events.forEach { Text("${it.feedback}\n${it.startMs / 1000.0}~${it.endMs / 1000.0}초") }
-            }
             EvaluationState.Idle -> Text("합성 재생과 실제 센서 수집은 별도로 표시됩니다. 실제 수집은 이 화면이 열려 있을 때만 동작합니다.")
             is EvaluationState.Recording -> Text("실제 센서 수집 중 · 속도 ${current.samples}개\n${current.status}")
             is EvaluationState.Unavailable -> Text(current.message)
@@ -97,6 +101,7 @@ private fun ReportCard(report: EvaluationReport) {
             }, style = MaterialTheme.typography.titleLarge)
             Text("규칙: ${report.config.ruleVersion} · 차량/도로 정확도 검증 전")
             report.environment?.let { Text("환경 평가는 가상 환경 기반입니다 · ${it.frames} 프레임 · 제외 ${it.excluded}개") }
+            EnvironmentOverview(report)
             PracticeOverview(report)
             OutlinedButton(onClick={ diagnosticsExpanded = !diagnosticsExpanded },
                 modifier=Modifier.heightIn(min=64.dp).semantics { stateDescription=if (diagnosticsExpanded) "펼침" else "접힘" }) {
@@ -136,7 +141,7 @@ private fun ReportCard(report: EvaluationReport) {
 @Composable
 private fun PracticeOverview(report: EvaluationReport) {
     Text("이번 연습의 복습",style=MaterialTheme.typography.titleLarge)
-    report.feedback.forEach { feedback ->
+    report.feedback.filterNot { report.environment?.review!=null && it.id.startsWith("environment-") }.forEach { feedback ->
         var expanded by rememberSaveable(report.startMs,feedback.id) { mutableStateOf(false) }
         Card(modifier=Modifier.fillMaxWidth()) {
             Column(Modifier.padding(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
@@ -179,7 +184,48 @@ private fun PracticeOverview(report: EvaluationReport) {
         }
         Text("$label: ${seconds(it.eligibleMs)} / ${seconds(it.totalMs)}초 (${String.format(Locale.ROOT,"%.0f",it.coverage*100)}%)")
     }
-    Text("관측 비율은 판단 정확도나 운전 점수가 아닙니다. 차선 경계는 관측하지 않아 차로 유지 성공·실패를 확정하지 않습니다.")
+    Text("관측 비율은 판단 정확도나 운전 점수가 아닙니다. 실제 도로의 차선 경계는 별도 관측이 필요합니다.")
+}
+
+@Composable
+private fun EnvironmentOverview(report:EvaluationReport) {
+    val result=report.environment ?: return
+    val review=result.review ?: return
+    Text("환경 관측 범위",style=MaterialTheme.typography.titleLarge)
+    review.quality.forEach { q ->
+        val title=when(q.channel) { "LANE_KEEPING" -> "차로 유지"; "FOLLOWING_DISTANCE" -> "차간거리"; "LANE_CHANGE_SIGNAL" -> "차로 변경 방향지시등"; else -> "신호 대응" }
+        Text("$title · 평가 가능 ${seconds(q.eligibleMs)}초 / 대상 상황 없음 ${seconds(q.noOpportunityMs)}초 / 제외 ${seconds(q.excludedMs)}초")
+        if(q.reasons.isNotEmpty())Text(q.reasons.entries.joinToString(" · ") { (key,ms)->"${EnvironmentReason.valueOf(key).label} ${seconds(ms)}초" },style=MaterialTheme.typography.bodyMedium)
+    }
+    Text("관측 수치",style=MaterialTheme.typography.titleMedium)
+    if(review.metrics.isEmpty())Text("유효한 수치 근거가 없습니다")
+    review.metrics.forEach { (key,value)->Text(metricLabel(key,value)) }
+    Text("시간순 복습 · ${review.groups.size}개 상황",style=MaterialTheme.typography.titleLarge)
+    if(review.groups.isEmpty())Text("관측된 복습 이벤트가 없습니다. 제외 시간과 평가 대상 상황도 함께 확인하세요.")
+    review.groups.forEach { group ->
+        var expanded by rememberSaveable(report.startMs,group.id) { mutableStateOf(false) }
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                Text("${seconds(group.startMs-report.startMs)}~${seconds(group.endMs-report.startMs)}초 · "+if(group.limited) "판단 보류·추가 관측 필요" else "합성 환경 관측",style=MaterialTheme.typography.labelLarge)
+                Text(group.title,style=MaterialTheme.typography.titleMedium)
+                Text(group.nextPractice)
+                group.evidence.filterKeys { it!="durationMs" }.forEach { (key,value)->Text(metricLabel(key,value)) }
+                OutlinedButton(onClick={ expanded = !expanded },modifier=Modifier.heightIn(min=64.dp).semantics { stateDescription=if(expanded) "펼침" else "접힘" }) {
+                    Text(if(expanded) "원본 이벤트 접기" else "원본 이벤트와 판단 근거 보기")
+                }
+                if(expanded)result.events.filter { it.kind in group.kinds && it.startMs<=group.endMs && it.endMs>=group.startMs }.forEach {
+                    Text("${it.feedback}\n${seconds(it.startMs-report.startMs)}~${seconds(it.endMs-report.startMs)}초 · ${it.detail}")
+                }
+            }
+        }
+    }
+    Text("THW는 현재 속도로 앞차 위치에 도달하는 시간, TTC는 현재 접근 속도가 유지될 때 간격이 소진되는 시간입니다. 합성 환경의 학습 참고값이며 실제 안전을 보장하지 않습니다.")
+}
+
+private fun metricLabel(key:String,value:Double):String {
+    val label=when(key) { "minLaneClearanceM" -> "차로 유지 구간 최소 차체 여유"; "minGapM" -> "앞차 최소 차체 간격"; "minHeadwayS" -> "최소 시간 간격 THW"; "minTtcS" -> "최소 접근 시간 TTC"; "redStopLineGapM" -> "적색 정차 시 최소 정지선 여유"; "signalPreparationMs" -> "방향지시등 사전 연속 관측"; "signalOffDurationMs" -> "변경 중 관측된 방향지시등 해제"; else -> "관측 지속 시간" }
+    val unit=if(key.endsWith("M")) "m" else "초"
+    return "$label: ${String.format(Locale.ROOT,"%.2f",if(key.endsWith("Ms")) value/1000 else value)}$unit"
 }
 
 private fun ManeuverKind.label() = when(this) {

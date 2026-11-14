@@ -13,6 +13,13 @@ from emulator_scenarios import FIXTURE, verify_trace, require_exclusive_console,
 
 
 class IntegrationOracleTest(unittest.TestCase):
+    def test_freshness_survives_reboot_without_accepting_an_old_document(self):
+        previous={"startMs":20000,"endMs":50000}
+        current={"startMs":2000,"endMs":32000}
+        self.assertTrue(emulator_scenarios.is_new_trace(current,previous,1000,33000))
+        self.assertFalse(emulator_scenarios.is_new_trace(previous,previous,1000,33000))
+        self.assertFalse(emulator_scenarios.is_new_trace(previous,None,1000,33000))
+        self.assertFalse(emulator_scenarios.is_new_trace(current,None,2500,33000))
     def setUp(self):
         self.plan = json.loads(FIXTURE.read_text(encoding="utf-8"))["emulator"]
         self.phases = [{"id":p["id"], "startSeconds":7 + i*6, "endSeconds":13 + i*6} for i,p in enumerate(self.plan["phases"])]
