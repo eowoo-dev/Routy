@@ -51,7 +51,8 @@ export async function list(installationId:string,url:URL) {
 export async function detail(installationId:string,sessionId:string):Promise<DrivingRecordDetail> {
   const row=await db.drivingRecord.findUnique({where:{installationId_sessionId:{installationId,sessionId}}});
   if(!row)throw new ApiProblem(404,"NOT_FOUND","주행 기록이 없습니다.");
-  let report=row.report as Record<string,unknown>;
+  const report=row.report as Record<string,unknown>;
+  let reviewPreview:Record<string,unknown>|undefined;
   const environment=report.environment as Record<string,unknown>|undefined;
   if(row.archiveParts && !environment?.review) {
     const count=row.archiveParts;
@@ -61,7 +62,7 @@ export async function detail(installationId:string,sessionId:string):Promise<Dri
       yield part.bytes;
     }}
     const restored=await archiveReviewPreview(chunks());
-    if(restored.review.groups.length>0)report={...report,environment:{...environment,review:restored.review},reviewPreview:restored.preview};
+    if(restored.review.groups.length>0)reviewPreview={...restored.preview,review:restored.review};
   }
-  return {...summary(row),report,...(row.archiveParts!=null && row.archiveSha256!=null?{archive:{parts:row.archiveParts,bytes:Number(row.archiveBytes),sha256:row.archiveSha256}}:{})};
+  return {...summary(row),report,...(reviewPreview?{reviewPreview}:{}),...(row.archiveParts!=null && row.archiveSha256!=null?{archive:{parts:row.archiveParts,bytes:Number(row.archiveBytes),sha256:row.archiveSha256}}:{})};
 }

@@ -9,7 +9,7 @@ import { archiveReviewPreview } from "../src/server/driving-records/review-previ
 const group={id:"environment-1",startMs:100,endMs:1000,title:"차로 변경 중 신호가 꺼졌어요",nextPractice:"변경을 마칠 때까지 유지해보세요",kinds:["INTERRUPTED_LANE_CHANGE_SIGNAL"],evidence:{signalOffDurationMs:500},limited:false};
 const feedback={...group,observation:"중간 해제 관측"};
 const record=(report:Record<string,unknown>)=>({sessionId:"123",startedAt:"2026-11-14T00:00:00Z",durationMs:1000,origin:"LIVE",report,archive:{parts:1,bytes:100,sha256:"a".repeat(64)}} as unknown as DrivingRecordDetail);
-const html=(report:Record<string,unknown>)=>renderToStaticMarkup(createElement(RecordDetail,{record:record(report)}));
+const html=(report:Record<string,unknown>,reviewPreview?:Record<string,unknown>)=>renderToStaticMarkup(createElement(RecordDetail,{record:{...record(report),reviewPreview}}));
 
 test("environment feedback survives an absent review and a represented group is shown once",()=>{
   assert.match(html({startMs:0,feedback:[feedback],environment:{}}),/차로 변경 중 신호가 꺼졌어요/);
@@ -29,7 +29,7 @@ test("legacy archive restores Korean feedback across UTF-8 part boundaries and m
   const result=await archiveReviewPreview(chunks(line(group,0)+line({...group,startMs:500,endMs:1500},1000)));
   assert.equal(result.review.groups.length,1);assert.equal(result.review.groups[0].endMs,1500);
   assert.equal(result.review.groups[0].title,group.title);assert.deepEqual(result.review.quality,[]);
-  assert.match(html({environment:{review:result.review},reviewPreview:result.preview}),/상세에서 복습 내용을 복원/);
+  assert.match(html({}, {...result.preview,review:result.review}),/상세에서 복습 내용을 복원/);
 });
 test("preview stays bounded and omits context events already finished before the core",async()=>{
   const lines=Array.from({length:100},(_,i)=>JSON.stringify({coreStartMs:0,report:{environment:{review:{groups:[{...group,startMs:i*2000,endMs:i*2000+1000}]}}}})).join("\n");

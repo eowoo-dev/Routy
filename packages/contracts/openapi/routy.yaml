@@ -619,6 +619,10 @@ components:
           properties:
             report: {type: object, additionalProperties: true}
             archive: {$ref: '#/components/schemas/DrivingRecordArchive'}
+            reviewPreview:
+              type: object
+              additionalProperties: true
+              description: Derived bounded review for legacy archives; the immutable report is unchanged.
     DrivingRecordPage:
       type: object
       required: [items, nextCursor]

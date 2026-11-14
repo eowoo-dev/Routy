@@ -522,6 +522,10 @@ export interface components {
                 [key: string]: unknown;
             };
             archive?: components["schemas"]["DrivingRecordArchive"];
+            /** @description Derived bounded review for legacy archives; the immutable report is unchanged. */
+            reviewPreview?: {
+                [key: string]: unknown;
+            };
         };
         DrivingRecordPage: {
             items: components["schemas"]["DrivingRecordSummary"][];

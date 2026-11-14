@@ -73,8 +73,8 @@ test("legacy segmented detail restores environmental review without changing imm
   assert.equal((await send(path+"/parts/0","PUT",{data:bytes.toString("base64"),sha256:hash(bytes)})).status,200);
   assert.equal((await send(path+"/complete","POST",{record:payload(),archive})).status,201);
   const response=await send(path);assert.equal(response.status,200);
-  const detail=await response.json();assert.equal(detail.report.environment.review.groups[0].title,group.title);
-  assert.equal(detail.report.reviewPreview.source,"LEGACY_ARCHIVE");
+  const detail=await response.json();assert.equal(detail.reviewPreview.review.groups[0].title,group.title);
+  assert.equal(detail.reviewPreview.source,"LEGACY_ARCHIVE");assert.deepEqual(detail.report,payload().report);
   const stored=await db.drivingRecord.findUniqueOrThrow({where:{installationId_sessionId:{installationId:ids[0],sessionId:id}}});
   assert.deepEqual(stored.report,payload().report);
   assert.equal((await send(path,"GET",undefined,1)).status,404);
