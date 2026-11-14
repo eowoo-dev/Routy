@@ -38,6 +38,7 @@ class RecordOutbox(private val root:File) {
     fun items():List<Item> = synchronized(lock) {
         scan().toList()
     }
+    fun find(id:String):Item? = synchronized(lock){file(id).takeIf{it.exists()}?.let{read(it)}}
     fun scan():Sequence<Item> = sequence {
         val files=root.listFiles()?.filter{it.extension=="json"}?.sortedBy{it.name}?:emptyList()
         for(f in files)yield(synchronized(lock){read(f)})

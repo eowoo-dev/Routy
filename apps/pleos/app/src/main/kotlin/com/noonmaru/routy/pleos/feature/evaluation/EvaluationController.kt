@@ -4,6 +4,7 @@ import android.app.Application
 import com.noonmaru.routy.evaluation.*
 import com.noonmaru.routy.pleos.data.telemetry.*
 import com.noonmaru.routy.pleos.data.records.RecordSync
+import com.noonmaru.routy.pleos.data.records.ArchiveRecovery
 import androidx.work.WorkManager
 import java.io.File
 import android.os.SystemClock
@@ -187,6 +188,7 @@ class EvaluationController(private val application: Application, private val sco
         check(capture==null && mutableState.value !is EvaluationState.Recording)
         cancelCapture()
         val current=Capture(SystemClock.elapsedRealtime(),generation,System.currentTimeMillis())
+        check(ArchiveRecovery.claim(current.sessionId))
         capture=current
         current.writer=scope.launch(Dispatchers.IO) {
             var archive:TripArchive?=null
@@ -206,7 +208,7 @@ class EvaluationController(private val application: Application, private val sco
                 scope.launch(Dispatchers.Main) {
                     if(capture===current){cancelCapture();mutableState.value=EvaluationState.Unavailable("센서 원본 저장 실패: ${e.message}")}
                 }
-            } finally {archive?.close()}
+            } finally {archive?.close();if(current.finalEnd==null)ArchiveRecovery.release(current.sessionId)}
         }
         current.tickJob=scope.launch {
             while(capture===current){delay(1000);if(capture===current)record(current,"tick",emptyMap())}
@@ -315,6 +317,7 @@ class EvaluationController(private val application: Application, private val sco
                 }
             }catch(e:CancellationException){throw e
             }catch(e:Exception){mutableState.value=EvaluationState.Unavailable("평가 기록 저장 실패: ${e.message}")}
+            finally {ArchiveRecovery.release(current.sessionId)}
         }
     }
     val currentSessionId:String? get()=capture?.sessionId
