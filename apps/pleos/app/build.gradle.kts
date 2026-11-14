@@ -11,6 +11,7 @@ val apiOrigin = providers.gradleProperty("routyApiBaseUrl").orElse("http://127.0
 fun quoted(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
 android {
+    sourceSets.getByName("main").assets.srcDir("../../../packages/contracts/design")
     useLibrary("android.car", false)
     namespace = "com.noonmaru.routy.pleos"
     compileSdk = 36

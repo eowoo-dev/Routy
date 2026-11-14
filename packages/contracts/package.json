@@ -3,7 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/index.ts" },
+  "exports": {
+    ".": "./src/index.ts",
+    "./design": "./design/routy.tokens.json"
+  },
   "scripts": {
     "generate": "openapi-typescript openapi/routy.yaml -o generated/typescript/schema.ts",
     "typecheck": "tsc --noEmit"

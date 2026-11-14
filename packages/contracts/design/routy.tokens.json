@@ -1,0 +1,22 @@
+{
+  "colors": {
+    "ink": "#163831",
+    "primary": "#175F55",
+    "onPrimary": "#FFFFFF",
+    "background": "#F2F5F1",
+    "surface": "#FFFFFF",
+    "mint": "#D9F1E9",
+    "muted": "#587068",
+    "border": "#CBD7CF",
+    "accent": "#E8B85A",
+    "error": "#A43835"
+  },
+  "radii": {
+    "panel": 28,
+    "button": 16
+  },
+  "spacing": {
+    "unit": 8
+  },
+  "fontFamily": "SUIT"
+}
