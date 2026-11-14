@@ -1,6 +1,22 @@
 name: routy-dev
 
 services:
+  virtual-console:
+    image: node:26.12.1-bookworm-slim
+    init: true
+    working_dir: /workspace
+    command: [node, infra/virtual-console/proxy.mjs]
+    ports:
+      - "127.0.0.1:${CONSOLE_PORT:-8090}:8090"
+    environment:
+      CONSOLE_UPSTREAM: http://host.docker.internal:8088
+    volumes:
+      - ./infra/virtual-console:/workspace/infra/virtual-console:ro
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:8090/routy/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
   pleos:
     profiles: [tools]
     build:
