@@ -55,6 +55,14 @@ class TripContinuityTest {
             assertTrue(result.report.feedback.any{it.id.startsWith("environment-")})
         } finally {directory.deleteRecursively()}
     }
+    @Test fun redStopEvidenceKeepsTheMinimumGapAcrossWindows() {
+        val rows=(0L..1000L step 100).map{at->EnvironmentFrame("red",at/100,at,at/20000.0,0.0,0.0,.05,"OFF",emptyList(),"RED",5.0)}
+        val stream=EnvironmentEvaluation.Stream()
+        stream.consume(rows.take(5),startMs=0,endMs=500)
+        val event=stream.consume(rows.drop(5),startMs=500,endMs=1001,final=true).events.single{it.kind=="STOPPED_BEFORE_RED"}
+        val reference=EnvironmentEvaluation.evaluate(rows).events.single{it.kind=="STOPPED_BEFORE_RED"}
+        assertEquals(reference.evidence["redStopLineGapM"],event.evidence["redStopLineGapM"])
+    }
     @Test fun realGapStillEndsPendingManeuver() {
         val rows=frames();val state=EnvironmentEvaluation.Stream()
         state.consume(rows.filter{it.atMs<10000},startMs=0,endMs=10000)
@@ -76,12 +84,13 @@ class TripContinuityTest {
         repeat(2) { i ->
             val start=i*1000L
             val report=DrivingEvaluationEngine().evaluate(DrivingSession(start,start+1000,DataOrigin.SYNTHETIC))
-            val review=EnvironmentReview(listOf(EnvironmentCoverage("LANE_KEEPING",1000,900,0,100,mapOf("TIME_GAP" to 100))),emptyList(),emptyMap(),
+            val review=EnvironmentReview(listOf(EnvironmentCoverage("LANE_KEEPING",1000,900,0,100,mapOf("TIME_GAP" to 100))),emptyList(),mapOf("redStopLineGapM" to (2.0-i)),
                 listOf(EnvironmentReviewGroup("environment-$i",start,start+500,"주의","다음 연습",listOf("LANE_BOUNDARY_APPROACH"),emptyMap(),false)))
             summary.add(report.copy(environment=EnvironmentResult("SIMULATED_ENVIRONMENT",10,0,emptyList(),review)))
         }
         val review=assertNotNull(summary.report().environment?.review)
         assertEquals(2,review.groups.size);assertEquals(1800L,review.quality.single().eligibleMs)
         assertEquals(200L,review.quality.single().reasons["TIME_GAP"])
+        assertEquals(1.0,review.metrics["redStopLineGapM"])
     }
 }

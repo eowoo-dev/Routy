@@ -75,7 +75,7 @@ object EnvironmentEvaluation {
         private var offDuration=0L
         private fun combine(a:Map<String,Double>,b:Map<String,Double>)=(a.keys+b.keys).associateWith { key ->
             val x=a[key];val y=b[key]
-            if(x==null)y!! else if(y==null)x else if(key.startsWith("min")) min(x,y) else max(x,y)
+            if(x==null)y!! else if(y==null)x else if(key.startsWith("min") || key=="redStopLineGapM") min(x,y) else max(x,y)
         }
         fun consume(frames:List<EnvironmentFrame>,detailed:Boolean=true,issues:List<EnvironmentIssue> = emptyList(),
             startMs:Long,endMs:Long,final:Boolean=false):EnvironmentResult {

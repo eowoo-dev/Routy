@@ -31,7 +31,7 @@ class WindowReportSummary {
             rows.sumOf{it.totalMs},rows.sumOf{it.eligibleMs},rows.sumOf{it.noOpportunityMs},rows.sumOf{it.excludedMs},
             rows.flatMap{it.reasons.keys}.distinct().associateWith{k->rows.sumOf{it.reasons[k] ?: 0}})}
         val metrics=(a.metrics.keys+b.metrics.keys).associateWith { key ->
-            val values=listOfNotNull(a.metrics[key],b.metrics[key]);if(key.startsWith("min"))values.min() else values.max()
+            val values=listOfNotNull(a.metrics[key],b.metrics[key]);if(key.startsWith("min") || key=="redStopLineGapM")values.min() else values.max()
         }
         return EnvironmentReview(quality,preview(a.issues,b.issues),metrics,preview(a.groups,b.groups))
     }
