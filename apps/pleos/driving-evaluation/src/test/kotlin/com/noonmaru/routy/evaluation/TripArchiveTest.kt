@@ -9,7 +9,7 @@ class TripArchiveTest {
     @get:Rule val folder=TemporaryFolder()
     private fun row(at:Long,value:Double=10.0)=mapOf("atMs" to at,"value" to value,"available" to true)
     @Test fun twoHourHighRateInputIsPersistedInBoundedWindowsAndLateEvidenceIsEvaluated() {
-        val archive=TripArchive(File(folder.root,"trip"),0,1_700_000_000_000,windowBytes=65_536)
+        val archive=TripArchive(File(folder.root,"trip"),0,1_700_000_000_000)
         val end=7_200_000L
         for(at in 0L until end step 100) {
             val speed=if(at<end-2000)20.0 else 20.0-(at-(end-2000))*.008
@@ -17,10 +17,10 @@ class TripArchiveTest {
             archive.append(at,"steering",row(at,0.0))
         }
         archive.finish(end)
-        assertTrue(archive.segments>120)
+        assertTrue(archive.segments>=120)
         var total=0;var largest=0L
         for(i in 0 until archive.segments){total+=archive.session(i).speeds.size;largest=maxOf(largest,File(archive.directory,"raw-$i.ndjson").length())}
-        assertEquals(72_000,total);assertTrue(largest<65_536+TripArchive.ROW_BYTES)
+        assertEquals(72_000,total);assertTrue(largest<524_288+TripArchive.ROW_BYTES)
         val result=archive.evaluate()
         assertEquals(end,result.report.endMs)
         assertTrue(result.report.assessments.all { ExclusionReason.WINDOW_BOUNDARY in it.reasons })
@@ -78,5 +78,26 @@ class TripArchiveTest {
         assertEquals(32,summary.report().events.size)
         assertEquals(1_000_000,summary.report().endMs)
         assertEquals("window-boundary",summary.report().feedback.first().id)
+    }
+    @Test fun byteRotationAndStalledClockCannotCreateAnUnboundedWindow() {
+        val archive=TripArchive(File(folder.root,"bytes"),0,0,windowBytes=65_536)
+        val body=mapOf("data" to "x".repeat(4000))
+        repeat(100){archive.append(it.toLong(),"diagnostic",body)}
+        archive.finish(101)
+        assertTrue(archive.segments>1)
+        for(i in 0 until archive.segments)assertTrue(File(archive.directory,"raw-$i.ndjson").length()<=65_536+TripArchive.ROW_BYTES)
+        val stalled=TripArchive(File(folder.root,"clock"),0,0,windowBytes=65_536)
+        assertFails {repeat(100){stalled.append(0,"diagnostic",body)}}
+        stalled.close()
+    }
+    @Test fun assessedTurnOpportunitiesRemainPartialInsteadOfBecomingUnassessed() {
+        val summary=WindowReportSummary()
+        for(i in 0..1) {
+            val r=DrivingEvaluationEngine().evaluate(DrivingSession(i*1000L,(i+1)*1000L,DataOrigin.LIVE))
+            summary.add(r.copy(assessments=r.assessments.map{if(it.category==Category.TURN_SIGNAL_USE)
+                it.copy(status=AssessmentStatus.ASSESSED,opportunities=1,evaluatedOpportunities=1) else it}))
+        }
+        val turn=summary.report().assessments.single{it.category==Category.TURN_SIGNAL_USE}
+        assertEquals(AssessmentStatus.PARTIAL,turn.status);assertEquals(2,turn.evaluatedOpportunities)
     }
 }

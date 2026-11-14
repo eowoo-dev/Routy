@@ -21,7 +21,7 @@ class WindowReportSummary {
         val assessments=old.assessments.map { a ->
             val b=next.assessments.single{it.category==a.category}
             val eligible=a.eligibleMs+b.eligibleMs;val excluded=a.excludedMs+b.excludedMs
-            a.copy(status=when {eligible>0->AssessmentStatus.PARTIAL;a.status==AssessmentStatus.NO_OPPORTUNITY && b.status==a.status->a.status;else->AssessmentStatus.NOT_ASSESSED},
+            a.copy(status=when {eligible>0 || a.evaluatedOpportunities+b.evaluatedOpportunities>0->AssessmentStatus.PARTIAL;a.status==AssessmentStatus.NO_OPPORTUNITY && b.status==a.status->a.status;else->AssessmentStatus.NOT_ASSESSED},
                 eligibleMs=eligible,excludedMs=excluded,opportunities=a.opportunities+b.opportunities,evaluatedOpportunities=a.evaluatedOpportunities+b.evaluatedOpportunities,
                 reasons=a.reasons+b.reasons+ExclusionReason.WINDOW_BOUNDARY)
         }

@@ -51,7 +51,10 @@ class TripArchive(val directory:File,val startMs:Long,val startedEpochMs:Long,
     fun append(atMs:Long,kind:String,value:JsonObject) {
         check(!closed)
         val at=maxOf(lastAt,atMs);lastAt=at
-        if(at>segmentStart && (at-segmentStart>=windowMs || bytes>=windowBytes))seal(at)
+        if(bytes>=windowBytes) {
+            check(at>segmentStart){"Sensor clock stalled while raw window was full"}
+            seal(at)
+        }else if(at-segmentStart>=windowMs)seal(at)
         when(kind) {
             "speedGapStart" -> if(speedGap==null)speedGap=value.long("atMs")
             "steeringGapStart" -> if(steeringGap==null)steeringGap=value.long("atMs")
@@ -103,11 +106,14 @@ class TripArchive(val directory:File,val startMs:Long,val startedEpochMs:Long,
     fun evaluate(availability:List<SensorAvailability> = emptyList(),network:RoadNetwork?=null):Evaluation {
         check(completed && segments>0)
         val aggregate=WindowReportSummary()
+        val observedSignals=mutableSetOf<String>()
         var previous:DrivingSession?=null
         val target=File(directory,"reports.ndjson");val temp=File(directory,"reports.ndjson.tmp")
         FileOutputStream(temp).use { stream ->
             for(index in 0 until segments) {
                 val core=session(index,availability,network)
+                observedSignals.addAll(core.telemetry.map{it.signal})
+                require(observedSignals.size<=512){"Sensor channel count exceeds the declared read policy"}
                 val prior=previous
                 val lookbackStart=maxOf(prior?.startMs?:core.startMs,core.startMs-10_000)
                 fun ranges(a:List<TimeRange>,b:List<TimeRange>)=(a+b).mapNotNull {
@@ -136,7 +142,7 @@ class TripArchive(val directory:File,val startMs:Long,val startedEpochMs:Long,
             stream.fd.sync()
         }
         Files.move(temp.toPath(),target.toPath(),StandardCopyOption.REPLACE_EXISTING,StandardCopyOption.ATOMIC_MOVE)
-        val report=aggregate.report()
+        val report=aggregate.report().let{it.copy(telemetry=it.telemetry.copy(channels=observedSignals.size))}
         val summary=TraceReplay.summary(report)+mapOf("segmentation" to mapOf("windows" to segments,
             "previewLimit" to WindowReportSummary.PREVIEW,"details" to "ARCHIVE",
             "boundaryPolicy" to "Disjoint metric windows with up to 10s/one-window event lookback; longer boundary maneuvers may be unassessed"))

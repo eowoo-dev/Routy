@@ -14,3 +14,15 @@ dependencies {
     implementation(libs.moshi.core)
     testImplementation(kotlin("test-junit"))
 }
+
+// A separate report keeps the full regression run intact while exercising the
+// disk-backed pipeline under a substantially smaller heap than Android's.
+tasks.register<Test>("archiveMemoryTest") {
+    description = "Two-hour disk archive regressions with a 96MiB heap"
+    group = "verification"
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    maxHeapSize = "96m"
+    filter { includeTestsMatching("*TripArchiveTest") }
+    mustRunAfter(tasks.test)
+}

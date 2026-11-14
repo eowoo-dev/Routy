@@ -47,7 +47,7 @@ class EvaluationController(private val application: Application, private val sco
     private val engine = DrivingEvaluationEngine()
     private val mutableState = MutableStateFlow<EvaluationState>(EvaluationState.Idle)
     val state = mutableState.asStateFlow()
-    private var capture: Capture? = null
+    @Volatile private var capture: Capture? = null
     private var deadline: Job? = null
     private var generation = 0L
     private var scenarioJob:Job?=null
@@ -181,167 +181,154 @@ class EvaluationController(private val application: Application, private val sco
         mutableState.value = EvaluationState.Unavailable("차량 속도 권한이 없어 실제 데이터 수집은 시작하지 않았습니다.")
     }
 
-    /** A null deadline is used for gear-controlled trips; timed capture is diagnostic only. */
+    /** Null deadline: D starts a trip, continuous P (or disabling the setting) ends it. */
     fun startCapture(durationMs:Long?=30_000) {
-        require(durationMs == null || durationMs >= 5_000)
-        check(capture == null && mutableState.value !is EvaluationState.Recording) { "이미 수집 또는 저장 중입니다" }
+        require(durationMs==null || durationMs>=5_000)
+        check(capture==null && mutableState.value !is EvaluationState.Recording)
         cancelCapture()
-        val current = Capture(SystemClock.elapsedRealtime(), generation, System.currentTimeMillis())
-        capture = current
-        if(com.noonmaru.routy.pleos.BuildConfig.DEBUG) {
-            current.environmentJob=scope.launch {
-                val environmentSource=EnvironmentSource()
-                while(capture===current) {
-                    val row=withContext(Dispatchers.IO) { runCatching { environmentSource.poll() }.getOrNull() }
-                    if(capture===current && row!=null && row.sessionAtMs>=current.startMs) current.environment+=row
-                    delay(100)
+        val current=Capture(SystemClock.elapsedRealtime(),generation,System.currentTimeMillis())
+        capture=current
+        current.writer=scope.launch(Dispatchers.IO) {
+            var archive:TripArchive?=null
+            try {
+                archive=TripArchive(File(application.filesDir,"sensor-traces/${current.sessionId}"),current.startMs,current.startEpochMs)
+                current.archive=archive
+                for(row in current.sink.rows){
+                    val document=JsonDocuments.read(row.bytes.toString(Charsets.UTF_8))
+                    @Suppress("UNCHECKED_CAST")
+                    archive.append(row.atMs,document["kind"] as String,document["value"] as JsonObject)
                 }
+                current.sink.failure?.let{throw it}
+                current.finalEnd?.let { archive.finish(it) }
+            } catch(e:CancellationException){throw e
+            } catch(e:Exception) {
+                current.failure=e
+                scope.launch(Dispatchers.Main) {
+                    if(capture===current){cancelCapture();mutableState.value=EvaluationState.Unavailable("센서 원본 저장 실패: ${e.message}")}
+                }
+            } finally {archive?.close()}
+        }
+        current.tickJob=scope.launch {
+            while(capture===current){delay(1000);if(capture===current)record(current,"tick",emptyMap())}
+        }
+        if(com.noonmaru.routy.pleos.BuildConfig.DEBUG)current.environmentJob=scope.launch {
+            val environmentSource=EnvironmentSource()
+            while(capture===current) {
+                val row=withContext(Dispatchers.IO){runCatching{environmentSource.poll()}.getOrNull()}
+                if(capture===current && row!=null && row.sessionAtMs>=current.startMs)
+                    record(current,"environment",EnvironmentIntegration.encode(listOf(row)).single())
+                delay(100)
             }
         }
-        mutableState.value = EvaluationState.Recording(0, "차량 센서를 수집합니다. 화면을 벗어나도 계속됩니다.")
-        val onReading: (SensorReading) -> Unit = { value -> scope.launch {
-            if (capture === current && value.atMs >= current.startMs) {
-                current.telemetry += value
+        mutableState.value=EvaluationState.Recording(0,"차량 센서 원본을 디스크에 기록합니다. 화면을 벗어나도 계속됩니다.")
+        val onReading:(SensorReading)->Unit={ row ->
+            if(capture===current && row.atMs>=current.startMs) {
+                record(current,"readings",mapOf("signal" to row.signal,"atMs" to row.atMs,"kind" to row.kind.name,
+                    "number" to row.number,"flag" to row.flag,"state" to row.state,"fields" to row.fields,
+                    "available" to row.available,"providerTimestampMs" to row.providerTimestampMs))
+                current.telemetryCount.incrementAndGet()
+            }
+        }
+        val onAvailability:(SensorAvailability)->Unit={ value ->scope.launch {
+            if(capture===current){
+                if(value.signal !in current.availability && current.availability.size>=512){failCapture(current,"센서 채널 정보를 저장하지 못했어요.")}
+                else current.availability[value.signal]=value
             }
         } }
-        val onAvailability: (SensorAvailability) -> Unit = { value -> scope.launch {
-            if (capture === current) {
-                current.availability[value.signal] = value
-                val counts = current.availability.values.groupingBy { it.access }.eachCount()
-                mutableState.value = EvaluationState.Recording(current.speeds.size,
-                    "SDK 채널 ${current.availability.size}개 · 수신 ${current.telemetry.size}개\n$counts")
+        catalog.start(onReading,onAvailability);aaos.start(onReading,onAvailability);extra.start(onReading,onAvailability)
+        source.start(onSample={sample->scope.launch{if(capture===current)accept(current,sample)}},
+            onStatus={status->scope.launch{if(capture===current){current.status=status;mutableState.value=EvaluationState.Recording(current.speedCount,status)}}},
+            onGap={scope.launch{if(capture===current && current.gapStart==null){
+                current.gapStart=maxOf(current.startMs,current.lastSpeedAt?:current.startMs)
+                record(current,"speedGapStart",mapOf("atMs" to current.gapStart))
+            }}})
+        steeringSource.start(onSample={ sample ->
+            if(capture===current && sample.receivedAtMs>=current.startMs) {
+                if(current.steeringGapStart!=null && sample.angleDeg!=null){
+                    record(current,"steeringGapEnd",mapOf("atMs" to sample.receivedAtMs));current.steeringGapStart=null
+                }
+                record(current,"steering",mapOf("atMs" to sample.receivedAtMs,"value" to sample.angleDeg,"available" to (sample.angleDeg!=null)))
+                current.angleCount++;current.lastSteeringAt=sample.receivedAtMs
+                mutableState.value=EvaluationState.Recording(current.speedCount,"${current.status}\n조향각 ${current.angleCount}개 · ${current.steeringStatus}")
             }
-        } }
-        catalog.start(onReading, onAvailability)
-        aaos.start(onReading, onAvailability)
-        extra.start(onReading, onAvailability)
-        source.start(
-            onSample = { sample -> scope.launch { if (capture === current) accept(current, sample) } },
-            onStatus = { status -> scope.launch {
-                if (capture === current) {
-                    current.status = status
-                    mutableState.value = EvaluationState.Recording(current.speeds.size, status)
-                }
-            } },
-            onGap = { scope.launch {
-                if (capture === current && current.gapStart == null) {
-                    // Conservative: do not hold the last usable speed across an acquisition failure.
-                    current.gapStart = maxOf(current.startMs, current.speeds.lastOrNull()?.atMs ?: current.startMs)
-                }
-            } },
-        )
-        steeringSource.start(
-            onSample = { sample ->
-                if (capture === current && sample.receivedAtMs >= current.startMs) {
-                    current.steeringGapStart?.let { start ->
-                        if (sample.angleDeg != null && sample.receivedAtMs > start) {
-                            current.steeringGaps += TimeRange(start, sample.receivedAtMs)
-                            current.steeringGapStart = null
-                        }
-                    }
-                    current.angles += Observation(sample.receivedAtMs, sample.angleDeg, sample.angleDeg != null)
-                    Log.d("RoutySteering", "callback angle=${sample.angleDeg} time=${sample.receivedAtMs}")
-                    mutableState.value = EvaluationState.Recording(current.speeds.size, "${current.status}\n조향각 ${current.angles.size}개 · ${current.steeringStatus}")
-                }
-            },
-            onStatus = { status -> if (capture === current) { current.steeringStatus = status } },
-            onGap = { if (capture === current && current.steeringGapStart == null) {
-                current.steeringGapStart = maxOf(current.startMs, current.angles.lastOrNull()?.atMs ?: current.startMs)
-            } },
-        )
-        deadline = durationMs?.let { duration -> scope.launch { delay(duration); finish(current) } }
+        },onStatus={if(capture===current)current.steeringStatus=it},onGap={
+            if(capture===current && current.steeringGapStart==null){
+                current.steeringGapStart=maxOf(current.startMs,current.lastSteeringAt?:current.startMs)
+                record(current,"steeringGapStart",mapOf("atMs" to current.steeringGapStart))
+            }
+        })
+        deadline=durationMs?.let{duration->scope.launch{delay(duration);finish(current)}}
     }
-
-    private fun accept(current: Capture, sample: SpeedSample) {
-        if (sample.timestampMs < current.startMs) {
-            current.olderSamples++
-            return // Initial cached readings are not new observations during this capture.
+    private fun record(current:Capture,kind:String,value:JsonObject) {
+        if(capture!==current)return // Late callback after acquisition stopped is outside this trip.
+        if(!current.sink.offer(SystemClock.elapsedRealtime(),kind,value))scope.launch(Dispatchers.Main){
+            if(capture===current)failCapture(current,"저장 장치가 센서 수신을 따라가지 못했어요. 원본 파일을 확인해주세요.")
         }
-        val available = sample.speedMps != null && sample.sourceTimestampNanos > 0 && sample.timestampMs <= sample.receivedAtMs
-        val gapStart = current.gapStart
-        if (available && gapStart != null && sample.timestampMs > gapStart) {
-            current.gaps += TimeRange(gapStart, sample.timestampMs)
-            current.gapStart = null
-        }
-        current.speeds += Observation(sample.timestampMs, sample.speedMps, available)
-        mutableState.value = EvaluationState.Recording(current.speeds.size, current.status)
     }
-
-    private fun finish(current: Capture) {
-        if (capture !== current) return
-        current.environmentJob?.cancel()
-        source.stop()
-        steeringSource.stop()
-        catalog.stop(); aaos.stop(); extra.stop()
-        capture = null
-        deadline?.cancel()
-        deadline = null
-        val end = SystemClock.elapsedRealtime()
-        val gaps = current.gaps.mapNotNull { range ->
-            val clippedEnd = minOf(range.endMs, end)
-            if (clippedEnd > range.startMs) TimeRange(range.startMs, clippedEnd) else null
-        }.toMutableList()
-        current.gapStart?.let { if (end > it) gaps += TimeRange(it, end) }
-        val steeringGaps = current.steeringGaps.toMutableList()
-        current.steeringGapStart?.let { if (end > it) steeringGaps += TimeRange(it, end) }
-        val session = DrivingSession(current.startMs, end, DataOrigin.LIVE,
-            speeds = current.speeds.toList(), speedGaps = gaps,
-            steeringAngles = current.angles.toList(), steeringGaps = steeringGaps, steeringTimeBasis = SteeringTimeBasis.CALLBACK_RECEIPT,
-            telemetry = current.telemetry.toList(), sensorAvailability = current.availability.values.toList(), telemetryTruncated = current.truncated,
-            environment=current.environment.toList())
-        val intervals = current.speeds.zipWithNext().map { (a, b) -> b.atMs - a.atMs }
-        val detail = "실제 AAOS 속도 ${current.speeds.size}개 · 시작 전 캐시 제외 ${current.olderSamples}개" +
-            (if (intervals.isEmpty()) " · 수신 간격 확인 불가" else " · 간격 ${intervals.min()}~${intervals.max()}ms") +
-            "\n${current.status}\n조향각 ${current.angles.size}개 · ${current.steeringStatus}" +
-            "\nSDK 기록 ${current.telemetry.size}개 · ${current.availability.size}개 채널 진단 · 위치·도로·신호의 관측 품질은 결과에서 확인합니다."
+    private fun failCapture(current:Capture,message:String) {
+        if(capture!==current)return
+        cancelCapture();mutableState.value=EvaluationState.Unavailable(message)
+    }
+    private fun accept(current:Capture,sample:SpeedSample) {
+        if(sample.timestampMs<current.startMs){current.olderSamples++;return}
+        val available=sample.speedMps!=null && sample.sourceTimestampNanos>0 && sample.timestampMs<=sample.receivedAtMs
+        if(available && current.gapStart!=null && sample.timestampMs>current.gapStart!!){
+            record(current,"speedGapEnd",mapOf("atMs" to sample.timestampMs));current.gapStart=null
+        }
+        record(current,"speed",mapOf("atMs" to sample.timestampMs,"value" to sample.speedMps,"available" to available))
+        current.speedCount++;current.lastSpeedAt=sample.timestampMs
+        mutableState.value=EvaluationState.Recording(current.speedCount,current.status)
+    }
+    private fun finish(current:Capture) {
+        if(capture!==current)return
+        current.environmentJob?.cancel();current.tickJob?.cancel()
+        source.stop();steeringSource.stop();catalog.stop();aaos.stop();extra.stop()
+        capture=null;deadline?.cancel();deadline=null
         scope.launch {
-          try {
-            var mapDetail = ""
-            val map = withContext(Dispatchers.IO) {
-                runCatching {
-                    val file = File(application.filesDir, "road-network.json")
-                    if (!file.exists()) null else {
-                        require(file.length() <= 4_194_304) { "Map input exceeds 4MiB" }
-                        PracticeCodec.liveNetwork(file.readText(),end,System.currentTimeMillis(),current.startEpochMs)
-                    }
-                }.getOrElse { mapDetail = "Map unavailable: ${it.message}"; null }
-            }
-            val normalized = PracticeInputs.normalize(session.copy(roadNetwork=map))
-            val report = withContext(Dispatchers.Default) { engine.evaluate(normalized) }
-            val trace = withContext(Dispatchers.IO) {
-                val local=saveTrace(normalized, report, current.sessionId)
-                val sync=enqueueUpload(current.sessionId,report,current.startEpochMs)
-                "$local\n$sync"
-            }
-            // A user may have started a new capture while evaluation was running.
-            if (current.generation == generation && capture == null && mutableState.value is EvaluationState.Recording) {
-                mutableState.value = EvaluationState.Finished(report, "$detail\n센서 기록: $trace\n$mapDetail")
-                logReport(report)
-            }
-          } catch(e:CancellationException){throw e} catch(e:Exception) {
-            mutableState.value=EvaluationState.Unavailable("평가 기록 저장 실패: ${e.message}")
-          }
+            try {
+                delay(1) // End follows even a callback delivered in the stop clock tick.
+                current.finalEnd=SystemClock.elapsedRealtime();current.sink.close()
+                val result=withContext(Dispatchers.IO) {
+                    current.writer?.join()
+                    (current.failure?:current.sink.failure)?.let{throw it}
+                    val archive=checkNotNull(current.archive)
+                    val file=File(application.filesDir,"road-network.json")
+                    val network=if(!file.exists())null else runCatching {
+                        require(file.length()<=4_194_304)
+                        PracticeCodec.liveNetwork(file.readText(),current.finalEnd!!,System.currentTimeMillis(),current.startEpochMs)
+                    }.getOrNull()
+                    val evaluated=archive.evaluate(current.availability.values.toList(),network)
+                    RecordSync.outbox(application).enqueueArchive(current.sessionId,evaluated,current.startEpochMs)
+                    RecordSync.schedule(application)
+                    val index=mapOf("schemaVersion" to 2,"storage" to "SEGMENTED","sessionId" to current.sessionId,
+                        "origin" to "LIVE","startMs" to current.startMs,"endMs" to current.finalEnd,"segments" to archive.segments,
+                        "truncated" to false,"analysis" to evaluated.summary,"rawDirectory" to current.sessionId)
+                    val root=File(application.filesDir,"sensor-traces")
+                    TripArchive.atomic(File(root,"${current.sessionId}.json"),index)
+                    TripArchive.atomic(File(root,"latest.json"),index)
+                    TripArchive.atomic(File(archive.directory,"complete.json"),index)
+                    evaluated
+                }
+                if(current.generation==generation && capture==null && mutableState.value is EvaluationState.Recording){
+                    mutableState.value=EvaluationState.Finished(result.report,"속도 ${current.speedCount}개 · 조향 ${current.angleCount}개 · SDK ${current.telemetryCount.get()}개\n원본 디스크 저장 · 상세 평가 ${result.parts}개 조각 전송 대기")
+                    logReport(result.report)
+                }
+            }catch(e:CancellationException){throw e
+            }catch(e:Exception){mutableState.value=EvaluationState.Unavailable("평가 기록 저장 실패: ${e.message}")}
         }
     }
-
     val currentSessionId:String? get()=capture?.sessionId
-    fun finishCapture() { capture?.let(::finish) }
-
+    fun finishCapture(){capture?.let(::finish)}
     fun cancelCapture() {
-        generation++
-        scenarioJob?.cancel(); scenarioJob=null
-        mutableScenarioStatus.value=""
-        capture?.environmentJob?.cancel()
-        deadline?.cancel()
-        deadline = null
-        if (capture != null) mutableState.value = EvaluationState.Unavailable("화면을 벗어나 수집을 종료했습니다. 완결되지 않은 수집은 평가하지 않습니다.")
-        capture = null
-        source.stop()
-        steeringSource.stop()
-        catalog.stop(); aaos.stop(); extra.stop()
+        generation++;scenarioJob?.cancel();scenarioJob=null;mutableScenarioStatus.value=""
+        capture?.let {current->
+            current.environmentJob?.cancel();current.tickJob?.cancel();current.sink.close();current.writer?.cancel()
+            mutableState.value=EvaluationState.Unavailable("수집이 중단됐어요. 완료되지 않은 디스크 기록은 평가 완료로 표시하지 않습니다.")
+        }
+        capture=null;deadline?.cancel();deadline=null
+        source.stop();steeringSource.stop();catalog.stop();aaos.stop();extra.stop()
     }
-
-    fun close() { cancelCapture() }
+    fun close(){cancelCapture()}
 
     private fun logReport(report: EvaluationReport) {
         Log.i("RoutyEvaluation", "origin=${report.origin} engine=${report.engineVersion} rules=${report.config.ruleVersion} events=${report.events.map { it.kind }}")
@@ -353,31 +340,20 @@ class EvaluationController(private val application: Application, private val sco
         Log.i("RoutyEvaluation", "feedback=${report.feedback.map { it.priority to it.title }}")
     }
 
-    private fun saveTrace(session: DrivingSession, report: EvaluationReport, id:String): String {
-        val root = File(application.filesDir, "sensor-traces").apply { mkdirs() }
-        val text=JsonDocuments.write(TraceReplay.recording(session,report))
-        for(name in listOf("$id.json","latest.json")) {
-            val file=android.util.AtomicFile(File(root,name));val output=file.startWrite()
-            try {output.write(text.toByteArray(Charsets.UTF_8));file.finishWrite(output)} catch(e:Exception){file.failWrite(output);throw e}
-        }
-        return "files/sensor-traces/latest.json"
-    }
-
-    private class Capture(val startMs: Long, val generation: Long, val startEpochMs: Long) {
+    private class Capture(val startMs:Long,val generation:Long,val startEpochMs:Long) {
         val sessionId=java.util.UUID.randomUUID().toString()
-        val environment=mutableListOf<AlignedEnvironmentFrame>()
-        var environmentJob: Job? = null
-        val telemetry = mutableListOf<SensorReading>()
-        val availability = linkedMapOf<String, SensorAvailability>()
-        val truncated = false
-        val speeds = mutableListOf<Observation<Double>>()
-        val gaps = mutableListOf<TimeRange>()
-        var gapStart: Long? = null
-        var olderSamples = 0
-        var status = "속도 관측 대기 중"
-        val angles = mutableListOf<Observation<Double>>()
-        val steeringGaps = mutableListOf<TimeRange>()
-        var steeringGapStart: Long? = null
-        var steeringStatus = "조향각 관측 대기 중"
+        val sink=DiskCaptureQueue()
+        var writer:Job?=null
+        var archive:TripArchive?=null
+        var finalEnd:Long?=null
+        @Volatile var failure:Exception?=null
+        var environmentJob:Job?=null
+        var tickJob:Job?=null
+        val availability=linkedMapOf<String,SensorAvailability>()
+        val telemetryCount=java.util.concurrent.atomic.AtomicInteger()
+        var speedCount=0;var angleCount=0;var olderSamples=0
+        var gapStart:Long?=null;var steeringGapStart:Long?=null
+        var lastSpeedAt:Long?=null;var lastSteeringAt:Long?=null
+        var status="속도 관측 대기 중";var steeringStatus="조향각 관측 대기 중"
     }
 }
