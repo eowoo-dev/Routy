@@ -66,12 +66,16 @@ class RecordOutbox(private val root:File) {
     }
     fun progress(id:String,nextPart:Int) = synchronized(lock) {
         val old=read(file(id));val archive=checkNotNull(old.archive)
-        require(old.state=="PENDING" && nextPart==archive.nextPart+1 && nextPart<=archive.parts)
+        require(nextPart in 1..archive.parts)
+        if(nextPart<=archive.nextPart)return@synchronized // A cancelled/replaced worker may deliver a late identical receipt.
+        require(old.state=="PENDING" && nextPart==archive.nextPart+1)
         write(old.copy(archive=archive.copy(nextPart=nextPart)))
     }
     fun sent(id:String,receipt:JsonObject) = synchronized(lock) {
         require(receipt["sessionId"]==id) { "서버 저장 응답의 세션이 다릅니다" }
-        write(read(file(id)).copy(state="SENT",error=null,receipt=receipt))
+        val old=read(file(id))
+        require(old.archive==null || old.archive.nextPart==old.archive.parts) { "상세 평가 조각 전송이 아직 완료되지 않았습니다" }
+        write(old.copy(state="SENT",error=null,receipt=receipt))
     }
     fun failed(id:String,error:String,terminal:Boolean) = synchronized(lock) {
         val old=read(file(id));if(old.state!="SENT")write(old.copy(state=if(terminal) "FAILED" else "PENDING",error=error))

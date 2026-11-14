@@ -11,16 +11,21 @@ class TripArchiveTest {
     @Test fun twoHourHighRateInputIsPersistedInBoundedWindowsAndLateEvidenceIsEvaluated() {
         val archive=TripArchive(File(folder.root,"trip"),0,1_700_000_000_000)
         val end=7_200_000L
+        val fields=(0 until 8).associate{"field$it" to "x".repeat(160)}
         for(at in 0L until end step 100) {
             val speed=if(at<end-2000)20.0 else 20.0-(at-(end-2000))*.008
             archive.append(at,"speed",row(at,speed))
             archive.append(at,"steering",row(at,0.0))
+            archive.append(at,"readings",mapOf("signal" to "Vehicle.HVAC.diagnostic","atMs" to at,
+                "kind" to "UPDATE","number" to null,"flag" to null,"state" to null,"fields" to fields,
+                "available" to true,"providerTimestampMs" to at))
         }
         archive.finish(end)
         assertTrue(archive.segments>=120)
-        var total=0;var largest=0L
-        for(i in 0 until archive.segments){total+=archive.session(i).speeds.size;largest=maxOf(largest,File(archive.directory,"raw-$i.ndjson").length())}
+        var total=0;var largest=0L;var rawBytes=0L
+        for(i in 0 until archive.segments){total+=archive.session(i).speeds.size;val size=File(archive.directory,"raw-$i.ndjson").length();largest=maxOf(largest,size);rawBytes+=size}
         assertEquals(72_000,total);assertTrue(largest<524_288+TripArchive.ROW_BYTES)
+        assertTrue(rawBytes>96L*1024*1024,"Entire raw archive must exceed the constrained test heap")
         val result=archive.evaluate()
         assertEquals(end,result.report.endMs)
         assertTrue(result.report.assessments.all { ExclusionReason.WINDOW_BOUNDARY in it.reasons })
@@ -28,6 +33,8 @@ class TripArchiveTest {
         assertTrue(TraceReplay.summary(DrivingEvaluationEngine().evaluate(TraceReplay.session(finalReport)))["events"].toString().contains("RAPID_DECELERATION"))
         assertEquals(TripArchive.sha256(result.archive),result.sha256)
         assertTrue(result.report.events.size<=WindowReportSummary.PREVIEW)
+        assertEquals(72_000,result.report.telemetry.readings)
+        assertEquals(1,result.report.telemetry.channels)
     }
     @Test fun durationBeyondOneDayDoesNotTruncateTheArchive() {
         val archive=TripArchive(File(folder.root,"day"),10,0)

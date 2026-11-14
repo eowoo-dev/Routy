@@ -16,6 +16,7 @@ import xml.etree.ElementTree as ET
 import struct
 import zlib
 from emulator_scenarios import Emulator, PACKAGE, ROOT, require_exclusive_console, require_sole_console_writer
+from disk_trace import disk_trace
 
 
 def png_pixel(data,x,y):
@@ -263,7 +264,8 @@ def main():
         park_since=journal()['parkSinceMs']
         if app_json('no_backup/driving-records/'+session_id+'.json'):raise RuntimeError('Record saved before Park hold completed')
         saved=wait(lambda:(r if (r:=journal()).get('sessionId')==session_id and r.get('phase')=='SAVED' else None),'Service did not finish durable storage',60)
-        trace=app_json('files/sensor-traces/'+session_id+'.json')
+        index=app_json('files/sensor-traces/'+session_id+'.json')
+        trace=disk_trace(index,lambda path:emu.shell('run-as',PACKAGE,'--user',emu.user,'cat',path)) if index else None
         queued=app_json('no_backup/driving-records/'+session_id+'.json')
         if not trace or not queued:raise RuntimeError('Exact session trace or queue file missing')
         errors.extend(verify_auto_continuity(snapshots,trace,session_id,queued,park_since))
@@ -273,12 +275,26 @@ def main():
         (output/'latest.json').write_text(json.dumps(trace,ensure_ascii=False,indent=2),encoding='utf-8')
         proof['offlineStored']=queued['state']=='PENDING'
         compose('start');web_stopped=False;wait(healthy,'API recovery failed',90)
-        wait(lambda:(r if (r:=app_json('no_backup/driving-records/'+session_id+'.json')) and r['state']=='SENT' else None),'Stored record was not uploaded',180)
+        def uploaded():
+            row=app_json('no_backup/driving-records/'+session_id+'.json')
+            if row and row['state']=='FAILED':raise RuntimeError('Stored record needs retry: '+str(row.get('error')))
+            return row if row and row['state']=='SENT' else None
+        wait(uploaded,'Stored record was not uploaded',180)
         credentials=app_json('no_backup/vehicle-installation.json')
         token=credentials['installationId']+'.'+credentials['secret']
         detail=api('/api/driving-records/'+session_id,token)
         proof['serverReportMatches']=detail['report']==trace['analysis']
         if not proof['serverReportMatches']:errors.append('Server lost or changed evaluation')
+        if index.get('storage')=='SEGMENTED':
+            import hashlib
+            request=urllib.request.Request('http://127.0.0.1:3000/api/driving-records/'+session_id+'/archive',headers={'Authorization':'Bearer '+token})
+            digest=hashlib.sha256();size=0
+            with urllib.request.urlopen(request,timeout=30) as response:
+                while block:=response.read(65536):digest.update(block);size+=len(block)
+            local=app_json('no_backup/driving-records/'+session_id+'.json')['archive']
+            proof['archiveMatches']=digest.hexdigest()==local['sha256'] and size==local['bytes'] and local['nextPart']==local['parts']
+            proof['diskWindows']=index['segments']
+            if not proof['archiveMatches']:errors.append('Full detailed archive differs or resume progress incomplete')
         page=api('/api/driving-records?limit=50',token)
         if sum(r['sessionId']==session_id for r in page['items'])!=1:errors.append('Duplicate or missing server record')
         proof['recordId']=detail['id']

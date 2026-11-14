@@ -211,7 +211,7 @@ class EvaluationController(private val application: Application, private val sco
         current.tickJob=scope.launch {
             while(capture===current){delay(1000);if(capture===current)record(current,"tick",emptyMap())}
         }
-        if(com.noonmaru.routy.pleos.BuildConfig.DEBUG)current.environmentJob=scope.launch {
+        if(com.noonmaru.routy.pleos.BuildConfig.DEBUG)current.environmentJob=scope.launch(Dispatchers.IO) {
             val environmentSource=EnvironmentSource()
             while(capture===current) {
                 val row=withContext(Dispatchers.IO){runCatching{environmentSource.poll()}.getOrNull()}

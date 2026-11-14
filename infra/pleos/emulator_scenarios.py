@@ -15,6 +15,7 @@ import urllib.parse
 import urllib.request
 import uuid
 import xml.etree.ElementTree as ET
+from disk_trace import disk_trace
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURE = ROOT / "apps/pleos/driving-evaluation/src/main/resources/scenarios/demo-v1.json"
@@ -110,9 +111,9 @@ def verify_trace(trace, plan, phases, previous_start):
     expect(all(not c["lanePositionKnown"] for c in trace["contextFindings"]), "Lane position was invented")
     expect(all(trace["startMs"] <= c["startMs"] < c["endMs"] <= trace["endMs"] for c in trace["contextFindings"]), "Finding outside the capture window")
     for phase, timing in zip(plan["phases"], phases):
-        low = trace["startMs"] + timing["startSeconds"] * 1000
-        high = trace["startMs"] + timing["endSeconds"] * 1000
-        settled = low + plan["settleSeconds"] * 1000
+        low = timing.get("startMs",trace["startMs"] + timing["startSeconds"] * 1000)
+        high = timing.get("endMs",trace["startMs"] + timing["endSeconds"] * 1000)
+        settled = timing.get("inputAtMs",low) + plan["settleSeconds"] * 1000
         rows = [r for r in trace["readings"] if r["available"] and settled <= r["atMs"] <= high]
         brakes = [r for r in rows if r["signal"] == "Vehicle.Brake.getCurrentBrakePedalStatus"]
         signals = [r for r in rows if r["signal"] == "Vehicle.TurnSignal.getCurrentTurnSignalState"]
@@ -161,15 +162,31 @@ class Emulator:
         with urllib.request.urlopen(urllib.request.Request(self.base + path + suffix, method=method), timeout=4) as response:
             return json.load(response)
 
+    def uptime_ms(self):
+        return int(float(self.shell("cat","/proc/uptime").split()[0])*1000)
+
     def trace(self):
         text = self.shell("run-as", PACKAGE, "--user", self.user, "cat", "files/sensor-traces/latest.json", check=False)
-        return json.loads(text)
+        index=json.loads(text)
+        if index.get('storage')=='SEGMENTED' and index.get('segments')==1:
+            return json.loads(self.shell('run-as',PACKAGE,'--user',self.user,'cat',f"files/sensor-traces/{index['sessionId']}/evaluation-0.json"))
+        return disk_trace(index,lambda path:self.shell('run-as',PACKAGE,'--user',self.user,'cat',path))
 
     def start_capture(self):
-        output = self.shell("am", "start", "-W", "--user", self.user, "-n", PACKAGE + "/com.noonmaru.routy.pleos.DiagnosticsActivity")
-        if "Error" in output:
-            raise RuntimeError(output)
-        for _ in range(4):
+        # The launcher is singleTask. A previous driving screen can remain above
+        # the diagnostic Activity; begin this isolated fixture with a fresh task.
+        # Never interrupt an existing practice or its durable-save phase.
+        try:
+            journal=json.loads(self.shell('run-as',PACKAGE,'--user',self.user,'cat','no_backup/active-trip.json',check=False))
+        except json.JSONDecodeError:journal={}
+        if journal.get('phase') in ('RECORDING','PARK_WAIT','SAVING') and 'TripService' in self.shell('dumpsys','activity','services',PACKAGE):
+            raise RuntimeError('An existing practice is active; finish it before the diagnostic fixture')
+        self.shell('am','force-stop','--user',self.user,PACKAGE)
+        for _ in range(6):
+            # A newly bound UX/gear connection can still be conservative on the
+            # first launch. Retry the parked entry, never override the restriction.
+            output = self.shell("am", "start", "-W", "--user", self.user, "-n", PACKAGE + "/com.noonmaru.routy.pleos.DiagnosticsActivity")
+            if "Error" in output:raise RuntimeError(output)
             self.shell("uiautomator", "dump", "/sdcard/routy-scenario-window.xml")
             root = ET.fromstring(self.shell("cat", "/sdcard/routy-scenario-window.xml"))
             for node in root.iter("node"):
@@ -180,7 +197,8 @@ class Emulator:
                         return
             scroll = next((n for n in root.iter("node") if n.get("scrollable") == "true"), None)
             if scroll is None:
-                break
+                time.sleep(.5)
+                continue
             x1, y1, x2, y2 = map(int, re.findall(r"\d+", scroll.get("bounds")))
             self.shell("input", "swipe", (x1+x2)//2, y1+100, (x1+x2)//2, y2-100, 200)
         raise RuntimeError("Capture button not available. Install the debug APK, grant its sensor permissions once, and leave the emulator in Park")
@@ -191,8 +209,18 @@ class Emulator:
         self.request("/vehicle/gear", "PUT", gear="Park")
 
 
-def run(args):
+def fixture_plan(environment=False):
     plan = json.loads(FIXTURE.read_text(encoding="utf-8"))["emulator"]
+    if environment:
+        # The separate environment smoke test needs sustained SDK observations,
+        # not three short contexts competing with HTTP/model sampling in 30s.
+        plan['phases']=[p for p in plan['phases'] if p['id']==plan['environmentPhaseId']]
+        plan['phaseSeconds']=plan['environmentPhaseSeconds']
+    return plan
+
+
+def run(args):
+    plan=fixture_plan(getattr(args,'environment',False))
     output = Path(args.output).resolve()
     output.mkdir(parents=True, exist_ok=True)
     for name in ("latest.json", "replayed.json", "result.json"):
@@ -216,6 +244,12 @@ def run(args):
     phases, errors, trace = [], [], None
     worker = None
     environment_worker = None
+    environment_pause=threading.Event()
+    environment_idle=threading.Event()
+    def environment_request(path,body=None):
+        data=None if body is None else json.dumps(body).encode()
+        request=urllib.request.Request('http://127.0.0.1:8090/routy/'+path,data=data,headers={'Content-Type':'application/json'},method='GET' if body is None else 'POST')
+        with urllib.request.urlopen(request,timeout=2) as response:return json.load(response)
     try:
         emu = Emulator(args)
         require_exclusive_console(lease)
@@ -229,8 +263,13 @@ def run(args):
         worker = threading.Thread(target=heartbeat, daemon=True)
         worker.start()
         if getattr(args, "environment", False):
+            if environment_request('scenarios/state').get('scenarioId') is not None:
+                raise RuntimeError('Scenario controller owns the environment; release it before the SDK fixture')
             def environment_input():
                 while not stopped.is_set():
+                    if environment_pause.is_set():
+                        environment_idle.set();stopped.wait(.05);continue
+                    environment_idle.clear()
                     try:
                         state = emu.request("/vehicle/state")
                         controls = state["controls"]
@@ -264,18 +303,29 @@ def run(args):
         time.sleep(max(0, plan["warmupSeconds"] - (time.monotonic() - began)))
         for phase in plan["phases"]:
             require_sole_console_writer(lease)
+            if environment_worker is not None:
+                # Each SDK gesture is a separate straight-road world. A partial
+                # steering cycle must not carry residual yaw into the next case.
+                environment_pause.set()
+                if not environment_idle.wait(2):raise RuntimeError('Environment input did not pause')
+                environment_request('scenarios/control',{'action':'release'})
             start = time.monotonic()
+            device_start=emu.uptime_ms()
             emu.request("/vehicle/turn-signal", "PUT", mode=phase["mode"])
             emu.request("/vehicle/controls", "PUT", speed=plan["speedKph"], accelerator=0, brake=phase["brake"], steering=0)
+            input_at=emu.uptime_ms()
+            environment_pause.clear()
             time.sleep(plan["settleSeconds"])
             count = 0
+            angles=plan["environmentSteeringDegrees"] if getattr(args,"environment",False) else plan["steeringDegrees"]
             while time.monotonic() - start < plan["phaseSeconds"]:
-                angle = plan["steeringDegrees"][count % len(plan["steeringDegrees"])]; count += 1
+                angle = angles[count % len(angles)]; count += 1
                 require_sole_console_writer(lease)
                 emu.request("/vehicle/controls", "PUT", speed=plan["speedKph"], accelerator=0, brake=phase["brake"], steering=angle)
                 time.sleep(plan["steeringIntervalSeconds"])
             emu.request("/vehicle/controls", "PUT", speed=plan["speedKph"], accelerator=0, brake=phase["brake"], steering=0)
-            phases.append({"id": phase["id"], "startSeconds": start - began, "endSeconds": time.monotonic() - began})
+            phases.append({"id": phase["id"], "startSeconds": start - began, "endSeconds": time.monotonic() - began,
+                           "startMs":device_start,"inputAtMs":input_at,"endMs":emu.uptime_ms()})
             print("INPUT", phase["id"], flush=True)
         emu.reset()
         deadline = began + plan["captureSeconds"] + 15
@@ -293,9 +343,20 @@ def run(args):
             raise RuntimeError("No new completed trace. Check sensor permissions and app lifecycle; old trace is never accepted")
         require_sole_console_writer(lease)
         (output / "latest.json").write_text(json.dumps(trace, ensure_ascii=False, indent=2), encoding="utf-8")
+        if trace.get('storage')=='SEGMENTED':
+            windows=output/'windows';windows.mkdir(exist_ok=True)
+            for i in range(trace['segments']):
+                raw=emu.shell('run-as',PACKAGE,'--user',emu.user,'cat',f"files/sensor-traces/{trace['sessionId']}/evaluation-{i}.json")
+                (windows/f'window-{i}.json').write_text(raw,encoding='utf-8')
         errors.extend(verify_trace(trace, plan, phases, previous_start))
         if getattr(args, "environment", False):
-            errors.extend(verify_environment_trace(trace))
+            if trace.get('storage')=='SEGMENTED':
+                # Quality belongs to each replay window, including its lookback.
+                # Do not pretend the bounded parent preview is a full batch report.
+                for i in range(trace['segments']):
+                    document=json.loads((output/'windows'/f'window-{i}.json').read_text(encoding='utf-8'))
+                    errors.extend(verify_environment_trace(document))
+            else:errors.extend(verify_environment_trace(trace))
     except (Exception, KeyboardInterrupt) as exc:
         errors.append(f"{type(exc).__name__}: {exc}")
     finally:

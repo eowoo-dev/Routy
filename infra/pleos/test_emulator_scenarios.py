@@ -13,6 +13,12 @@ from emulator_scenarios import FIXTURE, verify_trace, require_exclusive_console,
 
 
 class IntegrationOracleTest(unittest.TestCase):
+    def test_sdk_transitions_and_environment_sampling_have_separate_input_budgets(self):
+        basic=emulator_scenarios.fixture_plan();environment=emulator_scenarios.fixture_plan(True)
+        self.assertEqual(3,len(basic['phases']));self.assertEqual(6,basic['phaseSeconds'])
+        self.assertEqual(1,len(environment['phases']))
+        self.assertGreaterEqual(environment['phaseSeconds'],18)
+        self.assertLess(environment['warmupSeconds']+environment['phaseSeconds'],environment['captureSeconds'])
     def test_freshness_survives_reboot_without_accepting_an_old_document(self):
         previous={"startMs":20000,"endMs":50000}
         current={"startMs":2000,"endMs":32000}
@@ -43,6 +49,31 @@ class IntegrationOracleTest(unittest.TestCase):
 
     def test_complete_expected_phases_pass(self):
         self.assertEqual([], self.errors())
+
+    def device_phases(self):
+        phases=copy.deepcopy(self.phases)
+        for p in phases:
+            p['startMs']=self.trace['startMs']+p['startSeconds']*1000
+            p['endMs']=self.trace['startMs']+p['endSeconds']*1000
+            p['inputAtMs']=p['startMs']
+        return phases
+
+    def test_device_clock_does_not_assume_host_click_completion_equals_capture_start(self):
+        phases=self.device_phases()
+        for p in phases:p['startSeconds']+=1000;p['endSeconds']+=1000
+        self.assertEqual([],self.errors(phases=phases))
+
+    def test_next_phase_sample_after_confirmed_end_is_not_previous_phase_evidence(self):
+        phases=self.device_phases();phases[0]['endMs']-=100
+        self.trace['readings'].append({'signal':'Vehicle.TurnSignal.getCurrentTurnSignalState',
+            'atMs':phases[0]['endMs']+50,'state':'LEFT','available':True})
+        self.assertEqual([],self.errors(phases=phases))
+
+    def test_wrong_state_inside_confirmed_device_window_still_fails(self):
+        phases=self.device_phases()
+        self.trace['readings'].append({'signal':'Vehicle.TurnSignal.getCurrentTurnSignalState',
+            'atMs':phases[0]['inputAtMs']+3000,'state':'LEFT','available':True})
+        self.assertTrue(self.errors(phases=phases))
 
     def test_old_trace_and_synthetic_data_fail(self):
         self.assertTrue(self.errors(previous=1000))
@@ -113,6 +144,30 @@ class ExclusiveSessionTest(unittest.TestCase):
 
 
 class RunnerFailureTest(unittest.TestCase):
+    def test_capture_waits_for_parked_activity_rebind_without_overriding_restrictions(self):
+        class RebindingEmulator:
+            user='10';starts=0;taps=[]
+            def shell(self,*args,**kwargs):
+                if args[:2]==('am','start'):self.starts+=1
+                if args[0]=='cat':
+                    if self.starts==1:return '<hierarchy><node package="com.noonmaru.routy.pleos.debug" text="연습 기록을 저장했어요" /></hierarchy>'
+                    return '<hierarchy><node package="com.noonmaru.routy.pleos.debug" text="실제 센서 전체 30초 수집·분석" bounds="[100,200][300,260]" enabled="true" /></hierarchy>'
+                if args[0]=='input':self.taps.append(args)
+                return ''
+        emu=RebindingEmulator()
+        with patch.object(emulator_scenarios.time,'sleep'):emulator_scenarios.Emulator.start_capture(emu)
+        self.assertEqual(2,emu.starts);self.assertEqual([('input','tap',200,230)],emu.taps)
+
+    def test_existing_practice_is_never_stopped_to_prepare_diagnostics(self):
+        class ActiveEmulator:
+            user='10'
+            def shell(self,*args,**kwargs):
+                if args[0]=='run-as':return '{"phase":"RECORDING"}'
+                if args[0]=='dumpsys':return 'TripService'
+                raise AssertionError('Must not issue Activity/stop commands')
+        with self.assertRaisesRegex(RuntimeError,'existing practice'):
+            emulator_scenarios.Emulator.start_capture(ActiveEmulator())
+
     def test_preflight_conflict_closes_only_the_tests_own_lease(self):
         calls = []
         class ForeignClientEmulator:

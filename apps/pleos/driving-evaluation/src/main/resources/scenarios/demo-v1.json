@@ -26,6 +26,9 @@
     "settleSeconds":1.4,
     "steeringIntervalSeconds":0.2,
     "steeringDegrees":[0,60,120,60,0,-60,-120,-60],
+    "environmentSteeringDegrees":[0,60,0,-60,0,-60,0,60],
+    "environmentPhaseSeconds":18,
+    "environmentPhaseId":"moving-corrections",
     "phases":[
       {"id":"moving-corrections","mode":"Off","brake":0,"expectedContext":"UNSIGNALLED_CORRECTION_CANDIDATE","expectedState":"OFF","expectedBrake":false},
       {"id":"signal-left-wheel","mode":"BlinkLeft","brake":0,"expectedContext":"SIGNALLED_STEERING","expectedState":"LEFT","expectedBrake":false},

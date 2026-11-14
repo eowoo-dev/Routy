@@ -72,4 +72,21 @@ class ArchiveTransferTest {
         assertFailsWith<IOException>{ArchiveTransfer.send(queue,item,value.archive,serverFor(id,server),stopped={true})}
         assertEquals(0,server.completeCalls)
     }
+    @Test fun repeatedAndLateReceiptsCannotRewindProgressOrAcknowledgeAnIncompleteArchive() {
+        val (value,queue)=fixture();queue.enqueueArchive(id,value,0)
+        assertFails{queue.sent(id,mapOf("sessionId" to id))}
+        val executor=java.util.concurrent.Executors.newFixedThreadPool(2)
+        try {
+            val results=executor.invokeAll(List(2){java.util.concurrent.Callable{queue.progress(id,1);true}})
+            assertTrue(results.all{it.get()})
+        } finally {executor.shutdownNow()}
+        queue.progress(id,2);queue.progress(id,1)
+        assertEquals(2,queue.items().single().archive!!.nextPart)
+        val server=Server();ArchiveTransfer.send(queue,queue.items().single(),value.archive,object:ArchiveTransfer.Server {
+            override fun part(index:Int,bytes:ByteArray,sha256:String)=mapOf("index" to index,"sha256" to sha256)
+            override fun complete(record:JsonObject,archive:JsonObject)=mapOf("sessionId" to id)
+        })
+        queue.progress(id,1);queue.failed(id,"late retry",true)
+        assertEquals("SENT",queue.items().single().state)
+    }
 }

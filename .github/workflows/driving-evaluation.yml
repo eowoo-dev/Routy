@@ -41,6 +41,8 @@ jobs:
             apps/pleos/gradle/wrapper/gradle-wrapper.properties
       - name: JVM tests and fixed scenarios (no Android SDK required)
         run: sh ../gradlew --no-daemon --console=plain test run --args='--scenarios --output build/reports/scenarios.json'
+      - name: Two-hour disk archive pipeline under a 96MiB heap
+        run: sh ../gradlew --no-daemon --console=plain archiveMemoryTest
       - name: Generate and verify synthetic environment scenarios
         working-directory: .
         run: docker run --rm --user "$(id -u):$(id -g)" -v "$GITHUB_WORKSPACE:/workspace" -w /workspace node:26.12.1-bookworm-slim node infra/virtual-console/scenarios/generate.mjs

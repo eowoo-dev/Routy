@@ -7,7 +7,7 @@ import { ApiProblem,canonical,digest,object,upload } from "./validation";
 export const PART_BYTES=196_608;
 const fail=(status:number,code:string,message:string):never=>{throw new ApiProblem(status,code,message);};
 export function partIndex(text:string):number {
-  if(!/^(0|[1-9][0-9]{0,8})$/.test(text))return fail(400,"INVALID_PART","올바른 조각 번호가 필요합니다.");
+  if(!/^(0|[1-9][0-9]{0,7})$/.test(text))return fail(400,"INVALID_PART","올바른 조각 번호가 필요합니다.");
   return Number(text);
 }
 export function archiveManifest(value:unknown) {

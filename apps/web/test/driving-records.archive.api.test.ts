@@ -8,7 +8,10 @@ const db=new PrismaClient({adapter:new PrismaPg({connectionString:process.env.DA
 const base=process.env.RECORDS_TEST_API??"http://127.0.0.1:3000";
 const ids=[randomUUID(),randomUUID()],secret=randomBytes(32).toString("hex");
 const headers=(i=0)=>({Authorization:`Bearer ${ids[i]}.${secret}`,"Content-Type":"application/json"});
-const send=(path:string,method="GET",value?:unknown,i=0)=>fetch(base+path,{method,headers:headers(i),body:value===undefined?undefined:JSON.stringify(value)});
+const send=async(path:string,method="GET",value?:unknown,i=0)=>{
+  try{return await fetch(base+path,{method,headers:headers(i),body:value===undefined?undefined:JSON.stringify(value)});}
+  catch(error){throw new Error(`Archive test request failed: ${method} ${path}`,{cause:error});}
+};
 const hash=(b:Uint8Array)=>createHash("sha256").update(b).digest("hex");
 const partBytes=196608;
 const payload=()=>({schemaVersion:1,origin:"LIVE",startedAt:"2026-11-14T00:00:00Z",endedAt:"2026-11-15T12:00:00Z",durationMs:129600000,engineVersion:"0.4.0",ruleVersion:"experimental-0.4",environmentRuleVersion:null,scenarioId:null,
@@ -50,7 +53,8 @@ test("missing, damaged, conflicting and unordered parts cannot finalize",async()
   assert.equal((await send(path+"/complete","POST",{record:payload(),archive})).status,409);
   assert.equal((await send(path)).status,404);
   assert.equal((await send(path+"/archive")).status,404);
-  assert.equal((await send(path+"/parts/-1","PUT",body)).status,400);
+  assert.equal((await send(path+"/parts/-1","PUT",{})).status,400);
+  assert.equal((await send(path+"/parts/100000000","PUT",{})).status,400);
   assert.equal((await send(path+"/parts/1","PUT",{data:"not-base64",sha256:body.sha256})).status,400);
   // Exercise early Content-Length rejection without racing a large body against
   // the deliberately closed connection (fetch may otherwise report ECONNRESET).
