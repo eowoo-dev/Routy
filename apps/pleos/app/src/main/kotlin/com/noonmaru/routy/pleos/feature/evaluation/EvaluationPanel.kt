@@ -51,7 +51,7 @@ fun EvaluationPanel(model: EvaluationViewModel = viewModel()) {
         onDispose { owner.lifecycle.removeObserver(observer); model.cancelCapture() }
     }
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("주행 평가 엔진 v0.4", style = MaterialTheme.typography.headlineMedium)
+        Text("주행 평가", style = MaterialTheme.typography.headlineMedium)
         Text("실험용 학습 지표입니다. 급격한 조작을 운전 실수로 확정하거나 종합 점수로 환산하지 않습니다.")
         Button(onClick = model::replayExample, enabled = state !is EvaluationState.Recording,
             modifier = Modifier.heightIn(min = 64.dp)) { Text("회전 감지·학습 피드백 합성 시연") }
@@ -96,6 +96,7 @@ private fun ReportCard(report: EvaluationReport) {
                 DataOrigin.RECORDED -> "저장된 입력 재생 결과"
             }, style = MaterialTheme.typography.titleLarge)
             Text("규칙: ${report.config.ruleVersion} · 차량/도로 정확도 검증 전")
+            report.environment?.let { Text("환경 평가는 가상 환경 기반입니다 · ${it.frames} 프레임 · 제외 ${it.excluded}개") }
             PracticeOverview(report)
             OutlinedButton(onClick={ diagnosticsExpanded = !diagnosticsExpanded },
                 modifier=Modifier.heightIn(min=64.dp).semantics { stateDescription=if (diagnosticsExpanded) "펼침" else "접힘" }) {
@@ -107,7 +108,7 @@ private fun ReportCard(report: EvaluationReport) {
                         AssessmentStatus.ASSESSED -> "지표 산출"
                         AssessmentStatus.PARTIAL -> "일부 구간 산출"
                         AssessmentStatus.NOT_ASSESSED -> "미평가"
-                        AssessmentStatus.NO_OPPORTUNITY -> "확인된 회전 입력 없음"
+                        AssessmentStatus.NO_OPPORTUNITY -> "평가 대상 상황 없음"
                     }
                     val coverage = if (it.category == Category.TURN_SIGNAL_USE) "회전 입력 ${it.opportunities}건 / 평가 ${it.evaluatedOpportunities}건"
                         else "관측 ${seconds(it.eligibleMs)}초 / 제외 ${seconds(it.excludedMs)}초"

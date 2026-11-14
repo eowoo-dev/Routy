@@ -10,6 +10,9 @@
 
 # 위 검사 + Windows Pleos 에뮬레이터 입력/SDK 수집/JSON 검사/엔진 재생
 .\infra\pleos\test-scenarios.ps1 -Emulator
+
+# 실제 SDK와 가상 환경의 시각 정합·통합 보고서·전체 재생까지 검사
+.\infra\pleos\test-scenarios.ps1 -Environment
 ```
 
 에뮬레이터 테스트의 준비 조건:
@@ -22,6 +25,8 @@
 - Driving Mode는 기본 `ready` 상태로 둡니다. 크루즈를 활성화하면 기대 맥락이 달라져 검사가 실패합니다.
 - Python과 Docker 실행 환경. 스크립트에는 외부 Python 패키지가 필요하지 않습니다.
 - 에뮬레이터 테스트 중에는 별도 수집이나 Virtual Console 입력을 동시에 시작하지 않습니다.
+
+`-Environment`는 Docker의 `virtual-console` 서비스와 `adb reverse tcp:8090 tcp:8090`도 필요합니다. 최신 `install-windows.ps1`이 역방향 포트를 설정합니다. 테스트 실행기가 차량 제어를 단독으로 맡고 같은 입력 상태를 환경 모델에 공급하므로 브라우저 없이 검사합니다. 최소 50개 환경 관측, 시각·출처·순번, 세 환경 카테고리의 유효 구간을 검사하고 0.5.0 통합 보고서를 저장합니다. 환경이 없는 0.3/0.4 기록은 기존 경로로 재생합니다. 에뮬레이터 입력 검증과 실제 3D 화면 확인은 별개입니다.
 
 ADB 식별자를 바꾸려면 `-Serial emulator-5556`을 전달합니다. 개별 에뮬레이터 실행은 `python -X utf8 infra/pleos/emulator_scenarios.py --serial emulator-5554`로도 가능합니다. 물리 Android 기기의 ADB 식별자는 받지 않습니다.
 

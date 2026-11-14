@@ -48,6 +48,26 @@ def require_sole_console_writer(lease):
         raise RuntimeError(f"Virtual Console input conflict: expected the test's single session, got {count}. Keep all Virtual Console browser tabs closed until the test finishes")
 
 
+def verify_environment_trace(trace):
+    rows = trace.get("environment", [])
+    errors = []
+    if trace.get("engineVersion") != "0.5.0" or len(rows) < 50:
+        errors.append("Expected an integrated 0.5.0 trace with at least 50 environment observations")
+    if any(not trace["startMs"] <= row["sessionAtMs"] <= trace["endMs"] or row.get("serverAtMs") is None or row["frame"].get("source") != "SIMULATED_ENVIRONMENT" for row in rows):
+        errors.append("Environment provenance or aligned timestamps are invalid")
+    keys = [(row["frame"].get("runId"), row["frame"].get("sequence")) for row in rows]
+    if len(set(keys)) != len(keys) or any(b["sessionAtMs"] <= a["sessionAtMs"] for a, b in zip(rows, rows[1:])):
+        errors.append("Environment observations contain duplicates or reversed session time")
+    analysis = trace.get("analysis", {})
+    if analysis.get("environment", {}).get("source") != "SIMULATED_ENVIRONMENT":
+        errors.append("Integrated report lost simulated environment provenance")
+    categories = {a["category"]: a for a in analysis.get("assessments", [])}
+    for category in ("LANE_KEEPING", "TRAFFIC_SIGNAL_RESPONSE", "FOLLOWING_DISTANCE"):
+        if categories.get(category, {}).get("eligibleMs", 0) < 1000:
+            errors.append(f"{category}: insufficient aligned environment coverage")
+    return errors
+
+
 def verify_trace(trace, plan, phases, previous_start):
     """Oracle uses commanded phase windows and expected outcomes, not the engine's own rules."""
     errors = []
@@ -174,6 +194,7 @@ def run(args):
             stopped.wait(0.6)
     phases, errors, trace = [], [], None
     worker = None
+    environment_worker = None
     try:
         emu = Emulator(args)
         require_exclusive_console(lease)
@@ -186,6 +207,23 @@ def run(args):
             previous_start = -1
         worker = threading.Thread(target=heartbeat, daemon=True)
         worker.start()
+        if getattr(args, "environment", False):
+            def environment_input():
+                while not stopped.is_set():
+                    try:
+                        state = emu.request("/vehicle/state")
+                        controls = state["controls"]
+                        value = {"speed": controls["speed_kph"] / 3.6 if state["gear"]["actual"]["value"] == "Drive" else 0,
+                                 "steeringDeg": -controls["steering_deg"], "signal": "UNKNOWN"}
+                        request = urllib.request.Request("http://127.0.0.1:8090/routy/input", data=json.dumps(value).encode(), headers={"Content-Type": "application/json"}, method="POST")
+                        with urllib.request.urlopen(request, timeout=1) as response:
+                            response.read()
+                    except Exception as exc:
+                        if len(heartbeat_errors) < 3:
+                            heartbeat_errors.append("Environment input: " + str(exc))
+                    stopped.wait(0.1)
+            environment_worker = threading.Thread(target=environment_input, daemon=True)
+            environment_worker.start()
         deadline = time.monotonic() + 12
         while not emu.request("/vehicle/state")["gear"]["bridge_ready"]:
             if time.monotonic() >= deadline:
@@ -234,6 +272,8 @@ def run(args):
         require_sole_console_writer(lease)
         (output / "latest.json").write_text(json.dumps(trace, ensure_ascii=False, indent=2), encoding="utf-8")
         errors.extend(verify_trace(trace, plan, phases, previous_start))
+        if getattr(args, "environment", False):
+            errors.extend(verify_environment_trace(trace))
     except (Exception, KeyboardInterrupt) as exc:
         errors.append(f"{type(exc).__name__}: {exc}")
     finally:
@@ -248,6 +288,8 @@ def run(args):
                 errors.append(f"Cleanup failed: {exc}")
             finally:
                 stopped.set(); worker.join(timeout=5)
+                if environment_worker is not None:
+                    environment_worker.join(timeout=5)
         if lease_started:
             try:
                 emu.request("/browser/session", "POST", client=client, closing=1)
@@ -267,5 +309,6 @@ if __name__ == "__main__":
     parser.add_argument("--serial", default="emulator-5554")
     parser.add_argument("--console-url", default="http://127.0.0.1:8088")
     parser.add_argument("--adb")
+    parser.add_argument("--environment", action="store_true", help="Feed the local environment model and verify integrated SDK/environment capture")
     parser.add_argument("--output", default=str(ROOT / "apps/pleos/driving-evaluation/build/scenarios/emulator"))
     sys.exit(run(parser.parse_args()))

@@ -86,6 +86,16 @@ class EvaluationViewModel(application: Application) : AndroidViewModel(applicati
         cancelCapture()
         val current = Capture(SystemClock.elapsedRealtime(), generation, System.currentTimeMillis())
         capture = current
+        if(com.noonmaru.routy.pleos.BuildConfig.DEBUG) {
+            current.environmentJob=viewModelScope.launch {
+                val environmentSource=EnvironmentSource()
+                while(capture===current) {
+                    val row=withContext(Dispatchers.IO) { runCatching { environmentSource.poll() }.getOrNull() }
+                    if(capture===current && row!=null && row.sessionAtMs>=current.startMs && current.environment.size<2000) current.environment+=row
+                    delay(100)
+                }
+            }
+        }
         mutableState.value = EvaluationState.Recording(0, "30초 동안 공개 SDK 센서를 수집합니다.")
         val onReading: (SensorReading) -> Unit = { value -> viewModelScope.launch {
             if (capture === current && value.atMs >= current.startMs) {
@@ -162,6 +172,7 @@ class EvaluationViewModel(application: Application) : AndroidViewModel(applicati
 
     private fun finish(current: Capture) {
         if (capture !== current) return
+        current.environmentJob?.cancel()
         source.stop()
         steeringSource.stop()
         catalog.stop(); aaos.stop(); extra.stop()
@@ -179,7 +190,8 @@ class EvaluationViewModel(application: Application) : AndroidViewModel(applicati
         val session = DrivingSession(current.startMs, end, DataOrigin.LIVE,
             speeds = current.speeds.toList(), speedGaps = gaps,
             steeringAngles = current.angles.toList(), steeringGaps = steeringGaps, steeringTimeBasis = SteeringTimeBasis.CALLBACK_RECEIPT,
-            telemetry = current.telemetry.toList(), sensorAvailability = current.availability.values.toList(), telemetryTruncated = current.truncated)
+            telemetry = current.telemetry.toList(), sensorAvailability = current.availability.values.toList(), telemetryTruncated = current.truncated,
+            environment=current.environment.toList())
         val intervals = current.speeds.zipWithNext().map { (a, b) -> b.atMs - a.atMs }
         val detail = "실제 AAOS 속도 ${current.speeds.size}개 · 시작 전 캐시 제외 ${current.olderSamples}개" +
             (if (intervals.isEmpty()) " · 수신 간격 확인 불가" else " · 간격 ${intervals.min()}~${intervals.max()}ms") +
@@ -209,6 +221,7 @@ class EvaluationViewModel(application: Application) : AndroidViewModel(applicati
 
     fun cancelCapture() {
         generation++
+        capture?.environmentJob?.cancel()
         deadline?.cancel()
         deadline = null
         if (capture != null) mutableState.value = EvaluationState.Unavailable("화면을 벗어나 수집을 종료했습니다. 완결되지 않은 수집은 평가하지 않습니다.")
@@ -238,6 +251,8 @@ class EvaluationViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     private class Capture(val startMs: Long, val generation: Long, val startEpochMs: Long) {
+        val environment=mutableListOf<AlignedEnvironmentFrame>()
+        var environmentJob: Job? = null
         val telemetry = mutableListOf<SensorReading>()
         val availability = linkedMapOf<String, SensorAvailability>()
         var truncated = false

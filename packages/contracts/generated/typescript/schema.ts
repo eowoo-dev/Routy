@@ -25,6 +25,49 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        EnvironmentVehicle: {
+            id: string;
+            /** @description Body center forward position in metres */
+            s: number;
+            /** @description Body center lateral position in metres, positive left */
+            d: number;
+            speed: number;
+            length: number;
+            width: number;
+        };
+        /** @description Straight three-lane synthetic environment. atMs is simulation time; generatedAtMs uses the server monotonic clock. */
+        EnvironmentFrame: {
+            /** @enum {integer} */
+            version: 2;
+            /** @enum {string} */
+            source: "SIMULATED_ENVIRONMENT";
+            runId: string;
+            /** Format: int64 */
+            sequence: number;
+            /** Format: int64 */
+            atMs: number;
+            /** Format: int64 */
+            generatedAtMs?: number;
+            s: number;
+            d: number;
+            /** @description Radians, positive left of the straight road */
+            heading: number;
+            speed: number;
+            /** @enum {string} */
+            signal: "OFF" | "LEFT" | "RIGHT" | "UNKNOWN";
+            vehicles: components["schemas"]["EnvironmentVehicle"][];
+            /** @enum {string} */
+            light: "RED" | "YELLOW" | "GREEN";
+            stopLineS: number;
+            available: boolean;
+        };
+        EnvironmentTrace: {
+            frames: components["schemas"]["EnvironmentFrame"][];
+        };
+        EnvironmentClock: {
+            /** Format: int64 */
+            serverAtMs: number;
+        };
         HealthResponse: {
             /** @enum {string} */
             status: "ok";

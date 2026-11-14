@@ -38,7 +38,17 @@ docker compose -f compose.dev.yaml up -d virtual-console
 .\infra\pleos\gradle.ps1 '--project-dir=driving-evaluation' run '--args=--environment build/environment-trace.json --output build/environment-result.json'
 ```
 
-Highway 화면은 버전 2 모델이 유효할 때 해당 자차·선행차 위치와 신호·정지선을 표시합니다. 브라우저 입력의 방향지시등은 UNKNOWN으로 보내고 신호 사용 평가를 보류합니다. 좌우 조향 부호와 실제 화면 일치 확인·실제 SDK 입력 시각 연결·공유 계약 생성·기존 보고서 및 전체 기록 재생과의 통합은 남아 있습니다. 현재 별도 평가는 직선 도로의 실험적 기본 검출이며 종합 점수는 제공하지 않습니다.
+Highway 화면은 버전 2 모델이 유효할 때 해당 자차·선행차 위치와 신호·정지선을 표시합니다. 브라우저 입력의 방향지시등은 UNKNOWN으로 보내고 별도 재생에서는 신호 사용 평가를 보류합니다. 종합 점수는 제공하지 않습니다.
+
+## SDK 기록과 환경 평가 통합
+
+공유 계약은 `packages/contracts/openapi/routy.yaml`의 EnvironmentFrame·EnvironmentTrace·EnvironmentClock으로 정의하고 TypeScript와 Kotlin 모델을 생성합니다. `GET /routy/clock`은 서버 단조 시각을 반환하고 프레임의 `generatedAtMs`도 같은 시계를 사용합니다.
+
+debug 앱의 기존 ‘실제 센서 전체 30초 수집·분석’은 환경 API도 함께 조회합니다. 클록 요청의 송수신 중간 시각으로 앱 단조 시계에 대응시키고 전체 왕복 시간을 불확실성 상한으로 기록합니다. 같은 실행·순번의 중복 프레임을 추가하지 않으며 500ms 이상 지난 프레임은 수집하지 않습니다. 시각 오차가 100ms를 넘거나 SDK 속도와 모델 속도가 2m/s 넘게 다르면 해당 환경 관측을 평가에서 제외합니다. 이 값들은 실험 설정입니다.
+
+환경이 있는 기록은 엔진 0.5.0의 보고서·한국어 피드백과 `files/sensor-traces/latest.json`에 포함됩니다. 환경이 없는 기록은 0.4.0 경로를 유지합니다. 기존 기본 규칙 버전은 experimental-0.4이며, 환경 기능은 실험적 추가 모듈입니다. 저장한 환경 원본, 서버 생성 시각, 앱 세션 시각, 불확실성을 재생에서도 보존합니다. 비상등과 신호 의미가 확인된 SDK 신호만 변경 후 신호 사용 평가에 연결합니다.
+
+화면 일치와 좌우 조향 부호는 실제 브라우저 확인이 필요합니다. 이 환경에서 브라우저 제어 호스트가 연결되지 않아 시각 검증은 수행하지 못했습니다. 자동 API·모델·엔진 테스트 결과를 실제 화면 검증으로 간주하지 않습니다.
 
 ## 자동 테스트
 

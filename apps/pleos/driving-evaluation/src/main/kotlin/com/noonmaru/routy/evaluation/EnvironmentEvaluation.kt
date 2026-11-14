@@ -33,6 +33,12 @@ data class EnvironmentResult(val source: String, val frames: Int, val excluded: 
 
 /** Experimental learning feedback, not a legal or safety certification. No network or renderer dependency. */
 object EnvironmentEvaluation {
+    fun usable(f: EnvironmentFrame): Boolean = f.available && f.atMs>=0 && f.sequence>=0 && f.runId.isNotBlank() &&
+        listOf(f.s,f.d,f.heading,f.speed,f.stopLineS).all { it.isFinite() } && f.speed in 0.0..60.0 && abs(f.heading)<PI/2 &&
+        round(f.d/3.7).toInt() in -1..1 &&
+        f.signal in setOf("OFF","LEFT","RIGHT","UNKNOWN") && f.light in setOf("RED","YELLOW","GREEN") &&
+        f.vehicles.map { it.id }.distinct().size==f.vehicles.size &&
+        f.vehicles.all { v -> v.id.isNotBlank() && listOf(v.s,v.d,v.speed,v.length,v.width).all { it.isFinite() } && v.speed>=0 && v.length>0 && v.width>0 }
     fun decode(text: String): List<EnvironmentFrame> = JsonDocuments.read(text).objects("frames").map { f ->
         require(f.string("source") == "SIMULATED_ENVIRONMENT" && f.long("version") == 2L)
         EnvironmentFrame(f.string("runId"), f.long("sequence"), f.long("atMs"), f.number("s"), f.number("d"),
@@ -66,10 +72,7 @@ object EnvironmentEvaluation {
         }
         for(f in frames) {
             val p=previous
-            val valid=f.available && f.atMs>=0 && f.sequence>=0 && f.runId.isNotBlank() &&
-                listOf(f.s,f.d,f.heading,f.speed,f.stopLineS).all { it.isFinite() } && f.speed in 0.0..60.0 && abs(f.heading)<PI/2 &&
-                f.signal in setOf("OFF","LEFT","RIGHT","UNKNOWN") && f.light in setOf("RED","YELLOW","GREEN") &&
-                f.vehicles.all { v -> v.id.isNotBlank() && listOf(v.s,v.d,v.speed,v.length,v.width).all { it.isFinite() } && v.length>0 && v.width>0 }
+            val valid=usable(f)
             val continuous=p!=null && p.runId==f.runId && f.sequence>p.sequence && f.atMs-p.atMs in 1..250 && abs(f.s-p.s)<20 && abs(f.d-p.d)<2
             if(!valid) { excluded++; reset(); previous=null; continue }
             if(p!=null && !continuous) { excluded++; reset() }

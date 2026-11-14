@@ -34,7 +34,7 @@ object TraceReplay {
 
     fun session(document: JsonObject): DrivingSession {
         val legacy = document.string("engineVersion") == "0.3.0" && document.string("ruleVersion") == "experimental-0.3"
-        val current = document.string("engineVersion") == "0.4.0" && document.string("ruleVersion") == EvaluationConfig().ruleVersion
+        val current = document.string("engineVersion") in setOf("0.4.0","0.5.0") && document.string("ruleVersion") == EvaluationConfig().ruleVersion
         require(legacy || current) { "Unsupported captured engine/rule pair; an explicit migration is required" }
         if (current) {
             require(document.string("configSignature") == EvaluationConfig().toString()) { "Custom evaluation config requires explicit replay support" }
@@ -65,6 +65,7 @@ object TraceReplay {
             positionTimeBasis=if (current) SteeringTimeBasis.valueOf(document.string("positionTimeBasis")) else SteeringTimeBasis.UNKNOWN,
             roadNetwork=if (current) document["roadNetwork"]?.jsonObject()?.let(PracticeCodec::network) else null,
             hazardStateKnown=if (current) document.boolean("hazardStateKnown") else true,
+            environment=if(document.string("engineVersion")=="0.5.0") EnvironmentIntegration.decode(document.objects("environment")) else emptyList(),
             signalSemantics=if (current) SignalSemantics.valueOf(document.string("signalSemantics")) else SignalSemantics.UNKNOWN,
             turnDetectionComplete=if (current) document.boolean("turnDetectionComplete") else false,
             signals=if (current) document.objects("signals").map { Observation(it.long("atMs"),it["value"]?.let { v -> SignalSelection.valueOf(v as String) },it.boolean("available")) } else emptyList(),
@@ -82,7 +83,7 @@ object TraceReplay {
 
     fun verifyCaptured(document: JsonObject, report: EvaluationReport) {
         check(report.contextFindings == capturedContexts(document)) { "Replayed context results differ from the captured results" }
-        if (document.string("engineVersion") == "0.4.0") {
+        if (document.string("engineVersion") in setOf("0.4.0","0.5.0")) {
             val actual = JsonDocuments.read(JsonDocuments.write(summary(report))) - "origin"
             check(document["analysis"].jsonObject()-"origin" == actual) { "Replayed practice, quality, feedback or event results differ from the captured results" }
         }
@@ -106,7 +107,8 @@ object TraceReplay {
             "turns" to session.turns.map { mapOf("id" to it.id,"startMs" to it.startMs,"endMs" to it.endMs,"direction" to it.direction.name,"evidence" to it.evidence.map { e -> e.name }.sorted()) },
             "readings" to session.telemetry.map { mapOf("signal" to it.signal,"atMs" to it.atMs,"kind" to it.kind.name,"number" to it.number,"flag" to it.flag,"state" to it.state,"fields" to it.fields,"available" to it.available,"providerTimestampMs" to it.providerTimestampMs) },
             "availability" to session.sensorAvailability.map { mapOf("signal" to it.signal,"access" to it.access.name,"detail" to it.detail) },
-            "contextFindings" to summary(report)["contextFindings"],"analysis" to summary(report))
+            "contextFindings" to summary(report)["contextFindings"],"analysis" to summary(report)) +
+            (if(session.environment.isEmpty()) emptyMap() else mapOf("environment" to EnvironmentIntegration.encode(session.environment)))
     }
 
     fun summary(report: EvaluationReport): JsonObject = mapOf(
@@ -119,5 +121,7 @@ object TraceReplay {
         "practice" to PracticeCodec.summary(report.practice),"feedback" to PracticeCodec.feedback(report.feedback),
         "contextFindings" to report.contextFindings.map { mapOf("event" to it.event.name, "startMs" to it.startMs,
             "endMs" to it.endMs, "context" to it.context.name, "evidence" to it.evidence,
-            "missing" to it.missing.sorted(), "lanePositionKnown" to it.lanePositionKnown) })
+            "missing" to it.missing.sorted(), "lanePositionKnown" to it.lanePositionKnown) }) +
+        (report.environment?.let { result -> mapOf("environment" to mapOf("source" to result.source,"frames" to result.frames,"excluded" to result.excluded,
+            "events" to result.events.map { mapOf("kind" to it.kind,"startMs" to it.startMs,"endMs" to it.endMs,"detail" to it.detail) })) } ?: emptyMap())
 }

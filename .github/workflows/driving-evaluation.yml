@@ -5,12 +5,16 @@ on:
     paths:
       - 'apps/pleos/**'
       - 'infra/pleos/**'
+      - 'infra/virtual-console/**'
+      - 'packages/contracts/**'
       - '.github/workflows/driving-evaluation.yml'
   push:
     branches: [main]
     paths:
       - 'apps/pleos/**'
       - 'infra/pleos/**'
+      - 'infra/virtual-console/**'
+      - 'packages/contracts/**'
       - '.github/workflows/driving-evaluation.yml'
   workflow_dispatch:
 
@@ -38,7 +42,7 @@ jobs:
       - name: JVM tests and fixed scenarios (no Android SDK required)
         run: sh ../gradlew --no-daemon --console=plain test run --args='--scenarios --output build/reports/scenarios.json'
       - name: Integration oracle regression tests
-        run: python3 -m unittest discover -s ../../../infra/pleos -p 'test_emulator_scenarios.py'
+        run: python3 -m unittest discover -s ../../../infra/pleos -p 'test_*.py'
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -46,3 +50,11 @@ jobs:
           path: |
             apps/pleos/driving-evaluation/build/reports/
             apps/pleos/driving-evaluation/build/test-results/
+  environment:
+    runs-on: ubuntu-latest
+    container: node:26.12.1-bookworm-slim
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Environment model and proxy tests
+        run: node --test infra/virtual-console/environment/simulation.test.mjs infra/virtual-console/patches/highway-view.test.mjs infra/virtual-console/proxy.test.mjs

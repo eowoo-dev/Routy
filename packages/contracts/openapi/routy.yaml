@@ -16,6 +16,52 @@ paths:
                 $ref: '#/components/schemas/HealthResponse'
 components:
   schemas:
+    EnvironmentVehicle:
+      type: object
+      additionalProperties: false
+      required: [id, s, d, speed, length, width]
+      properties:
+        id: {type: string, minLength: 1}
+        s: {type: number, description: 'Body center forward position in metres'}
+        d: {type: number, description: 'Body center lateral position in metres, positive left'}
+        speed: {type: number, minimum: 0}
+        length: {type: number, minimum: 0.1}
+        width: {type: number, minimum: 0.1}
+    EnvironmentFrame:
+      type: object
+      additionalProperties: false
+      description: Straight three-lane synthetic environment. atMs is simulation time; generatedAtMs uses the server monotonic clock.
+      required: [version, source, runId, sequence, atMs, s, d, heading, speed, signal, vehicles, light, stopLineS, available]
+      properties:
+        version: {type: integer, enum: [2]}
+        source: {type: string, enum: [SIMULATED_ENVIRONMENT]}
+        runId: {type: string, minLength: 1}
+        sequence: {type: integer, format: int64, minimum: 0}
+        atMs: {type: integer, format: int64, minimum: 0}
+        generatedAtMs: {type: integer, format: int64, minimum: 0}
+        s: {type: number}
+        d: {type: number}
+        heading: {type: number, description: 'Radians, positive left of the straight road'}
+        speed: {type: number, minimum: 0, maximum: 60}
+        signal: {type: string, enum: ['OFF', 'LEFT', 'RIGHT', 'UNKNOWN']}
+        vehicles:
+          type: array
+          items: {$ref: '#/components/schemas/EnvironmentVehicle'}
+        light: {type: string, enum: [RED, YELLOW, GREEN]}
+        stopLineS: {type: number}
+        available: {type: boolean}
+    EnvironmentTrace:
+      type: object
+      required: [frames]
+      properties:
+        frames:
+          type: array
+          items: {$ref: '#/components/schemas/EnvironmentFrame'}
+    EnvironmentClock:
+      type: object
+      required: [serverAtMs]
+      properties:
+        serverAtMs: {type: integer, format: int64, minimum: 0}
     HealthResponse:
       type: object
       additionalProperties: false

@@ -21,12 +21,15 @@ test('observation endpoint rejects invalid frames and expires previously availab
     assert.equal(available.status, 200);
     assert.deepEqual((await available.json()).frame, frame);
     const base=`http://127.0.0.1:${port}`;
+    const clock=await (await fetch(base+'/routy/clock')).json();
+    assert.ok(Number.isSafeInteger(clock.serverAtMs));
     assert.equal((await fetch(base+'/routy/input',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({speed:10,steeringDeg:0,signal:'UNKNOWN'})})).status,200);
     await new Promise(resolve=>setTimeout(resolve,150));
     const trace=await (await fetch(base+'/routy/trace')).json();
     assert.ok(trace.frames.length>0);
     assert.equal(trace.frames[0].version,2);
     assert.equal(trace.frames[0].source,'SIMULATED_ENVIRONMENT');
+    assert.ok(Number.isSafeInteger(trace.frames[0].generatedAtMs));
     assert.equal((await fetch(base+'/routy/model')).status,200);
     await new Promise(resolve => setTimeout(resolve, 1600));
     const expired = await fetch(url);

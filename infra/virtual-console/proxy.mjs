@@ -13,7 +13,7 @@ setInterval(() => {
   if (!input || performance.now()-inputAt>500) return;
   if (!simulation) simulation = new EnvironmentSimulation(crypto.randomUUID());
   const time=simulation.atMs/1000;
-  frames.push(simulation.step({ ...input, light: time%30<15 ? 'RED' : 'GREEN', vehicles: [{ id:'lead-1',s:80+8*time,d:0,speed:8 }] }));
+  frames.push({...simulation.step({ ...input, light: time%30<15 ? 'RED' : 'GREEN', vehicles: [{ id:'lead-1',s:80+8*time,d:0,speed:8 }] }), generatedAtMs: Math.floor(performance.now())});
   if(frames.length>12000) frames.shift();
 },50).unref();
 const send = (res, status, value) => {
@@ -24,6 +24,7 @@ const send = (res, status, value) => {
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
+    if(url.pathname==='/routy/clock' && req.method==='GET') return send(res,200,{serverAtMs:Math.floor(performance.now())});
     if(url.pathname==='/routy/model' && req.method==='GET') return send(res,frames.length && performance.now()-inputAt<500 ? 200 : 503,{frame:frames.at(-1) ?? null});
     if(url.pathname==='/routy/trace' && req.method==='GET') return send(res,frames.length?200:503,{frames});
     if(url.pathname==='/routy/input' && req.method==='POST') {

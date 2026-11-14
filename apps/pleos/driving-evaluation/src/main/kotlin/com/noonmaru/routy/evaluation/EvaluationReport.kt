@@ -79,4 +79,5 @@ data class EvaluationReport(
     val practice: PracticeAnalysis,
     val feedback: List<LearningFeedback>,
     val practiceConfig: PracticeConfig = PracticeConfig(),
+    val environment: EnvironmentResult? = null,
 )
