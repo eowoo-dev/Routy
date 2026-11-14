@@ -2,6 +2,30 @@
 
 Pleos 공식 플러그인이 아닌 개발용 프록시입니다. 원본 에뮬레이터 파일은 수정하지 않습니다.
 
+## 독립 시나리오 실행
+
+http://127.0.0.1:8090/routy/scenarios 에서 정상 차로 변경, 차로 경계 접근, 적색 신호 정차, 앞차 간격 감소를 선택합니다. 이 화면은 합성 환경만 제어하며 Pleos SDK 차량 속성이나 원본 콘솔 세션을 쓰지 않습니다. 3D 화면에는 기존 Highway 모듈을 재사용합니다.
+
+- 선택하면 새 실행 ID의 준비 상태가 됩니다. 실행 중에는 선택을 바꿀 수 없습니다.
+- 시작은 준비 상태에서 실행하고, 정지 상태에서는 이어서 실행합니다.
+- 정지는 시간과 원시 기록을 그대로 보존합니다. 초기화는 실행 중에도 멈춘 뒤 새 ID와 빈 기록으로 돌아갑니다.
+- 완료된 시나리오를 다시 실행하려면 초기화합니다. 다른 시나리오를 선택해도 이전 상태는 이어지지 않습니다.
+- 수동 환경으로 전환하면 시나리오 제어권을 해제합니다. 기존 수동 콘솔 또는 `-Environment` 에뮬레이터 테스트를 사용하기 전에 해제해야 합니다.
+
+선택된 동안 `/routy/input`은 409로 수동 입력을 거부합니다. 관찰 화면은 서버 상태의 같은 프레임으로 3D와 수치를 표시하며 입력 POST를 보내지 않습니다. 서버 프로세스가 재시작되면 메모리의 실행 상태와 기록은 사라집니다. 원시 기록은 화면의 다운로드 링크 또는 `/routy/trace`로 내보냅니다.
+
+화면의 자동 검증은 완료된 입력 궤적의 기하 조건입니다. Kotlin 엔진 검증은 아래 명령으로 각 시나리오의 필수·금지 이벤트, 제외 프레임 0개, 같은 입력의 결정론적 재평가를 확인합니다. 엔진 판정을 시뮬레이터 입력에 주입하지 않습니다.
+
+```powershell
+# 네 가지 모두 생성 → 기하 검사 → JVM 테스트 → Kotlin 이벤트 검사
+.\infra\pleos\test-environment-scenarios.ps1
+
+# 하나만 독립 검증
+.\infra\pleos\test-environment-scenarios.ps1 -Scenario red-stop
+```
+
+입력 묶음은 `apps/pleos/driving-evaluation/build/environment-scenarios.json`, 검증 결과는 `build/reports/environment-scenarios.json`에 저장됩니다. 두 파일은 Git에서 제외합니다. Node 단위·제어 API 검사와 Node→Kotlin 검사는 GitHub Actions에도 포함합니다. 실제 SDK 수집 검증인 `test-scenarios.ps1 -Environment`와 합성 시나리오 검증은 별도 경로입니다.
+
 ## 실행
 
 윈도우에서 에뮬레이터를 실행하고 `adb forward tcp:8088 tcp:8088`을 설정합니다.
@@ -53,5 +77,5 @@ debug 앱의 기존 ‘실제 센서 전체 30초 수집·분석’은 환경 AP
 ## 자동 테스트
 
 ```powershell
-docker compose -f compose.dev.yaml exec -T virtual-console node --test infra/virtual-console/patches/highway-view.test.mjs infra/virtual-console/proxy.test.mjs infra/virtual-console/environment/simulation.test.mjs
+docker compose -f compose.dev.yaml exec -T virtual-console node --test infra/virtual-console/patches/highway-view.test.mjs infra/virtual-console/proxy.test.mjs infra/virtual-console/environment/simulation.test.mjs infra/virtual-console/scenarios/runner.test.mjs
 ```

@@ -4,6 +4,24 @@
 
 ## 실행
 
+독립 합성 시나리오는 에뮬레이터 없이도 실행할 수 있습니다. Node 26 컨테이너에서 고정 간격 입력을 만들고 Kotlin 평가기로 별도 기대 이벤트를 검사합니다. 각 실행은 새 실행 ID와 빈 모델 상태에서 시작합니다.
+
+```powershell
+.\infra\pleos\test-environment-scenarios.ps1
+.\infra\pleos\test-environment-scenarios.ps1 -Scenario lane-change
+```
+
+시각 시연은 `http://127.0.0.1:8090/routy/scenarios`에서 선택·시작·정지·초기화합니다. 이 화면은 SDK 차량 속성을 제어하지 않습니다. 완료 시 입력의 기하 조건을 표시하며, Kotlin 이벤트 검사 결과와 구분합니다.
+
+| 시나리오 | 필수 이벤트 | 입력 기하 조건 |
+|---|---|---|
+| lane-change | LANE_CHANGE_LEFT, LANE_CHANGE_SIGNAL_OBSERVED | 왼쪽 3.7m 차로에서 위치·헤딩 안정 |
+| lane-boundary | LANE_BOUNDARY_APPROACH | 차로 경계 안에서 접근 후 중앙 복귀 |
+| red-stop | STOPPED_BEFORE_RED | 적색 정지선 앞 0~5m에서 정차, 통과 없음 |
+| following-gap | SHORT_FOLLOWING_HEADWAY, LOW_CLOSING_TTC | 앞차 간격 감소, 범퍼 간 거리 양수 유지 |
+
+검사는 각 시나리오의 금지 이벤트·제외 프레임 0개·같은 입력의 재평가 일치도 확인합니다. 결과 JSON은 `apps/pleos/driving-evaluation/build/reports/environment-scenarios.json`에 생성합니다. 기존 SDK 테스트와 병행하려면 시나리오 화면에서 ‘수동 환경으로 전환’으로 환경 제어권을 해제하세요.
+
 ```powershell
 # Docker의 JDK로 엔진 테스트와 고정 시나리오 실행
 .\infra\pleos\test-scenarios.ps1

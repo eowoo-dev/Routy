@@ -3,6 +3,38 @@ info:
   title: Routy API
   version: 0.1.0
 paths:
+  /routy/scenarios/state:
+    get:
+      operationId: getScenarioState
+      summary: Read the development-only synthetic scenario controller
+      responses:
+        '200':
+          description: Controller state and available scenarios
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ScenarioState'}
+  /routy/scenarios/control:
+    post:
+      operationId: controlScenario
+      summary: Control synthetic scenarios without writing SDK vehicle properties
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: {type: string, enum: [select, start, stop, reset, release]}
+                id: {type: string, description: Required for select}
+      responses:
+        '200':
+          description: Updated synthetic controller state
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ScenarioState'}
+        '409':
+          description: Unknown scenario or invalid state transition
   /api/health:
     get:
       operationId: getHealth
@@ -16,6 +48,38 @@ paths:
                 $ref: '#/components/schemas/HealthResponse'
 components:
   schemas:
+    ScenarioState:
+      type: object
+      required: [status, durationMs, count, checks]
+      properties:
+        status: {type: string, enum: [idle, ready, running, stopped, completed]}
+        scenarioId: {type: string, nullable: true}
+        durationMs: {type: integer, minimum: 0}
+        count: {type: integer, minimum: 0}
+        frame:
+          allOf:
+            - {$ref: '#/components/schemas/EnvironmentFrame'}
+          nullable: true
+        checks:
+          type: array
+          items:
+            type: object
+            required: [label, passed]
+            properties:
+              label: {type: string}
+              passed: {type: boolean}
+        scenarios:
+          type: array
+          items:
+            type: object
+            required: [id, title, description, durationMs, expected, forbidden]
+            properties:
+              id: {type: string}
+              title: {type: string}
+              description: {type: string}
+              durationMs: {type: integer}
+              expected: {type: array, items: {type: string}}
+              forbidden: {type: array, items: {type: string}}
     EnvironmentVehicle:
       type: object
       additionalProperties: false

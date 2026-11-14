@@ -41,6 +41,11 @@ jobs:
             apps/pleos/gradle/wrapper/gradle-wrapper.properties
       - name: JVM tests and fixed scenarios (no Android SDK required)
         run: sh ../gradlew --no-daemon --console=plain test run --args='--scenarios --output build/reports/scenarios.json'
+      - name: Generate and verify synthetic environment scenarios
+        working-directory: .
+        run: docker run --rm --user "$(id -u):$(id -g)" -v "$GITHUB_WORKSPACE:/workspace" -w /workspace node:26.12.1-bookworm-slim node infra/virtual-console/scenarios/generate.mjs
+      - name: Kotlin environment scenario expectations and replay
+        run: sh ../gradlew --no-daemon --console=plain run --args='--environment-suite build/environment-scenarios.json --output build/reports/environment-scenarios.json'
       - name: Integration oracle regression tests
         run: python3 -m unittest discover -s ../../../infra/pleos -p 'test_*.py'
       - uses: actions/upload-artifact@v7
@@ -57,4 +62,4 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Environment model and proxy tests
-        run: node --test infra/virtual-console/environment/simulation.test.mjs infra/virtual-console/patches/highway-view.test.mjs infra/virtual-console/proxy.test.mjs
+        run: node --test infra/virtual-console/environment/simulation.test.mjs infra/virtual-console/patches/highway-view.test.mjs infra/virtual-console/proxy.test.mjs infra/virtual-console/scenarios/runner.test.mjs

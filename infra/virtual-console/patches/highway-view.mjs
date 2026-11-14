@@ -30,7 +30,8 @@ export function patchHighway(source) {
     }`);
   return "import { publishEnvironment, readEnvironment } from '/routy/environment-publisher.mjs';\n" + source.replace(anchor, `
     publishEnvironment({
-      input: { speed: s.gear === 'Drive' ? s.speed_kph / 3.6 : 0, steeringDeg: -s.steering_deg, signal: 'UNKNOWN' },
+      observeOnly: Boolean(s.observeOnly),
+      input: s.observeOnly ? null : { speed: s.gear === 'Drive' ? s.speed_kph / 3.6 : 0, steeringDeg: -s.steering_deg, signal: 'UNKNOWN' },
       ego: { lateralPositionM: ego.group.position.x, visualYawRad: ego.body.rotation.y - Math.PI },
       lanes: { widthM: 3.7, centersM: [-3.7, 0, 3.7], boundariesM: [-5.55, -1.85, 1.85, 5.55] },
       traffic: traffic.map((car, index) => ({ id: 'visual-' + index, lateralPositionM: car.x, longitudinalPositionM: car.z })),

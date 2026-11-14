@@ -30,6 +30,28 @@ object ExampleDrive {
 }
 
 fun main(args: Array<String>) {
+    if("--environment-suite" in args) {
+        val path=args[args.indexOf("--environment-suite")+1]
+        val suite=JsonDocuments.read(java.io.File(path).readText())
+        val results=suite.objects("cases").map { scenario ->
+            val frames=EnvironmentEvaluation.decode(JsonDocuments.write(mapOf("frames" to scenario["frames"])))
+            val report=EnvironmentEvaluation.evaluate(frames)
+            val kinds=report.events.map { it.kind }.toSet()
+            val errors=mutableListOf<String>()
+            scenario.strings("expected").filter { it !in kinds }.forEach { errors+="Missing event: $it" }
+            scenario.strings("forbidden").filter { it in kinds }.forEach { errors+="Unexpected event: $it" }
+            if(report.excluded!=0) errors+="Excluded frames: ${report.excluded}"
+            if(EnvironmentEvaluation.evaluate(frames)!=report) errors+="Replay is not deterministic"
+            scenario.objects("checks").filter { !it.boolean("passed") }.forEach { errors+="Geometry check failed: ${it.string("label")}" }
+            println("${if(errors.isEmpty()) "PASS" else "FAIL"} ${scenario.string("id")}: $errors")
+            mapOf("id" to scenario.string("id"),"passed" to errors.isEmpty(),"errors" to errors,
+                "frames" to frames.size,"excluded" to report.excluded,"events" to report.events.map { mapOf("kind" to it.kind,"startMs" to it.startMs,"endMs" to it.endMs) })
+        }
+        if("--output" in args) java.io.File(args[args.indexOf("--output")+1]).also { it.parentFile?.mkdirs() }
+            .writeText(JsonDocuments.write(mapOf("suite" to suite.string("suite"),"results" to results)))
+        check(results.isNotEmpty() && results.all { it["passed"]==true }) { "Environment scenario expectations failed" }
+        return
+    }
     if ("--environment" in args) {
         val index=args.indexOf("--environment")
         require(index+1<args.size)

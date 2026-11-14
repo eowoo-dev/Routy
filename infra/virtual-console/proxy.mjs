@@ -3,13 +3,16 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { patchHighway } from './patches/highway-view.mjs';
 import { EnvironmentSimulation } from './environment/simulation.mjs';
+import { ScenarioRunner, scenarios } from './scenarios/runner.mjs';
 
 const upstream = new URL(process.env.CONSOLE_UPSTREAM ?? 'http://host.docker.internal:8088');
 const manifest = JSON.parse(await readFile(new URL('./upstream-manifest.json', import.meta.url)));
 let latest = null;
 let receivedAt = 0;
 let simulation = null, input = null, inputAt = 0, frames = [];
+const scenarioRunner=new ScenarioRunner();
 setInterval(() => {
+  if(scenarioRunner.definition) { scenarioRunner.tick(); return; }
   if (!input || performance.now()-inputAt>500) return;
   if (!simulation) simulation = new EnvironmentSimulation(crypto.randomUUID());
   const time=simulation.atMs/1000;
@@ -24,10 +27,38 @@ const send = (res, status, value) => {
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
+    if(url.pathname==='/routy/scenarios/state' && req.method==='GET') return send(res,200,{scenarios,...scenarioRunner.snapshot()});
+    if(url.pathname==='/routy/scenarios/control' && req.method==='POST') {
+      if(!req.headers['content-type']?.startsWith('application/json')) return send(res,415,{error:'JSON required'});
+      if(req.headers.origin && req.headers.origin!==`http://${req.headers.host}`) return send(res,403,{error:'Origin mismatch'});
+      let body='';
+      for await(const chunk of req) { body+=chunk; if(Buffer.byteLength(body)>4096)return send(res,413,{error:'Input too large'}); }
+      let value; try { value=JSON.parse(body); } catch { return send(res,400,{error:'Invalid JSON'}); }
+      try {
+        if(value?.action==='select') scenarioRunner.select(value.id);
+        else if(['start','stop','reset','release'].includes(value?.action)) scenarioRunner[value.action]();
+        else return send(res,400,{error:'Unknown action'});
+        // No manual input may resurrect a previous world when scenario ownership is released.
+        input=null; simulation=null; frames=[];
+        return send(res,200,scenarioRunner.snapshot());
+      } catch(error) { return send(res,409,{error:error.message}); }
+    }
+    if(url.pathname==='/routy/scenarios' || url.pathname==='/routy/scenario-page.mjs') {
+      res.writeHead(200,{'content-type':url.pathname.endsWith('.mjs')?'text/javascript':'text/html; charset=utf-8','cache-control':'no-store'});
+      return res.end(await readFile(new URL(url.pathname.endsWith('.mjs')?'./scenarios/page.mjs':'./scenarios/index.html',import.meta.url)));
+    }
     if(url.pathname==='/routy/clock' && req.method==='GET') return send(res,200,{serverAtMs:Math.floor(performance.now())});
-    if(url.pathname==='/routy/model' && req.method==='GET') return send(res,frames.length && performance.now()-inputAt<500 ? 200 : 503,{frame:frames.at(-1) ?? null});
-    if(url.pathname==='/routy/trace' && req.method==='GET') return send(res,frames.length?200:503,{frames});
+    if(url.pathname==='/routy/model' && req.method==='GET') {
+      if(scenarioRunner.definition) return send(res,200,{controller:'scenario',...scenarioRunner.snapshot()});
+      return send(res,frames.length && performance.now()-inputAt<500 ? 200 : 503,{controller:'manual',frame:frames.at(-1) ?? null});
+    }
+    if(url.pathname==='/routy/trace' && req.method==='GET') {
+      const rows=scenarioRunner.definition ? scenarioRunner.frames : frames;
+      if(url.searchParams.get('download')==='1') res.setHeader('content-disposition','attachment; filename="environment-trace.json"');
+      return send(res,rows.length?200:503,{frames:rows});
+    }
     if(url.pathname==='/routy/input' && req.method==='POST') {
+      if(scenarioRunner.definition) return send(res,409,{error:'Scenario controller owns the environment; release it before manual input'});
       if(!req.headers['content-type']?.startsWith('application/json')) return send(res,415,{error:'JSON required'});
       if(req.headers.origin && req.headers.origin!==`http://${req.headers.host}`) return send(res,403,{error:'Origin mismatch'});
       let body='';

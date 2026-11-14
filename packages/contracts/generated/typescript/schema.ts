@@ -4,6 +4,40 @@
  */
 
 export interface paths {
+    "/routy/scenarios/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read the development-only synthetic scenario controller */
+        get: operations["getScenarioState"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/routy/scenarios/control": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Control synthetic scenarios without writing SDK vehicle properties */
+        post: operations["controlScenario"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -25,6 +59,26 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ScenarioState: {
+            /** @enum {string} */
+            status: "idle" | "ready" | "running" | "stopped" | "completed";
+            scenarioId?: string | null;
+            durationMs: number;
+            count: number;
+            frame?: components["schemas"]["EnvironmentFrame"] | null;
+            checks: {
+                label: string;
+                passed: boolean;
+            }[];
+            scenarios?: {
+                id: string;
+                title: string;
+                description: string;
+                durationMs: number;
+                expected: string[];
+                forbidden: string[];
+            }[];
+        };
         EnvironmentVehicle: {
             id: string;
             /** @description Body center forward position in metres */
@@ -85,6 +139,62 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getScenarioState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Controller state and available scenarios */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScenarioState"];
+                };
+            };
+        };
+    };
+    controlScenario: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    action: "select" | "start" | "stop" | "reset" | "release";
+                    /** @description Required for select */
+                    id?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Updated synthetic controller state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScenarioState"];
+                };
+            };
+            /** @description Unknown scenario or invalid state transition */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     getHealth: {
         parameters: {
             query?: never;

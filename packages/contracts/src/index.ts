@@ -5,3 +5,4 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 export type EnvironmentFrame = components["schemas"]["EnvironmentFrame"];
 export type EnvironmentTrace = components["schemas"]["EnvironmentTrace"];
 export type EnvironmentClock = components["schemas"]["EnvironmentClock"];
+export type ScenarioState = components["schemas"]["ScenarioState"];
