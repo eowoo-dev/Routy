@@ -42,8 +42,13 @@ fun main(args: Array<String>) {
             val violations = scenario.violations(report)
             println("${if (violations.isEmpty()) "PASS" else "FAIL"} ${scenario.id}: $violations")
             mapOf("id" to scenario.id, "passed" to violations.isEmpty(), "violations" to violations, "report" to TraceReplay.summary(report))
+        } + PracticeScenarios.cases().map { scenario ->
+            val report = DrivingEvaluationEngine().evaluate(PracticeScenarios.session(scenario.id))
+            val violations = scenario.violations(report)
+            println("${if (violations.isEmpty()) "PASS" else "FAIL"} practice/${scenario.id}: $violations")
+            mapOf("id" to "practice/${scenario.id}", "passed" to violations.isEmpty(), "violations" to violations,"report" to TraceReplay.summary(report))
         }
-        write(mapOf("suite" to "demo-v1", "results" to results))
+        write(mapOf("suite" to "demo-v1+practice-v1", "results" to results))
         check(results.all { it["passed"] == true }) { "Scenario expectation failed" }
         return
     }

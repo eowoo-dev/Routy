@@ -54,18 +54,25 @@ data class DrivingSession(
     val telemetry: List<SensorReading> = emptyList(),
     val sensorAvailability: List<SensorAvailability> = emptyList(),
     val telemetryTruncated: Boolean = false,
+    val positions: List<Observation<PositionFix>> = emptyList(),
+    val positionGaps: List<TimeRange> = emptyList(),
+    val positionTimeBasis: SteeringTimeBasis = SteeringTimeBasis.UNKNOWN,
+    val roadNetwork: RoadNetwork? = null,
+    /** SDK selection without observable hazards must not imply that hazards are OFF. */
+    val hazardStateKnown: Boolean = true,
 ) {
     init {
         require(startMs >= 0 && endMs > startMs) { "A session needs a positive monotonic time range." }
         require(speedGaps.all { it.startMs >= startMs && it.endMs <= endMs })
         require(steeringGaps.all { it.startMs >= startMs && it.endMs <= endMs })
+        require(positionGaps.all { it.startMs >= startMs && it.endMs <= endMs })
     }
     val durationMs: Long get() = endMs - startMs
 }
 
 /** Experimental learning thresholds; NOT calibrated safety or legal enforcement criteria. */
 data class EvaluationConfig(
-    val ruleVersion: String = "experimental-0.3",
+    val ruleVersion: String = "experimental-0.4",
     val speedMaxAgeMs: Long = 1_000,
     val roadMaxAgeMs: Long = 2_000,
     val signalMaxAgeMs: Long = 1_000,

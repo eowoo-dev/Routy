@@ -33,8 +33,13 @@ object TraceReplay {
     }
 
     fun session(document: JsonObject): DrivingSession {
-        require(document.string("ruleVersion") == EvaluationConfig().ruleVersion) { "Trace rule version differs; an explicit migration/config is required" }
-        require(document.string("engineVersion") == "0.3.0") { "Unsupported captured engine version" }
+        val legacy = document.string("engineVersion") == "0.3.0" && document.string("ruleVersion") == "experimental-0.3"
+        val current = document.string("engineVersion") == "0.4.0" && document.string("ruleVersion") == EvaluationConfig().ruleVersion
+        require(legacy || current) { "Unsupported captured engine/rule pair; an explicit migration is required" }
+        if (current) {
+            require(document.string("configSignature") == EvaluationConfig().toString()) { "Custom evaluation config requires explicit replay support" }
+            require(document.string("practiceConfigSignature") == PracticeConfig().toString()) { "Custom practice config requires explicit replay support" }
+        }
         require(document.string("origin") == DataOrigin.LIVE.name) { "Expected a LIVE recorder trace; synthetic fixtures have a separate entry point" }
         fun observations(key: String) = document.objects(key).map {
             Observation(it.long("atMs"), if (it["value"] == null) null else it.number("value"), it.boolean("available"))
@@ -54,7 +59,18 @@ object TraceReplay {
                     available = r.boolean("available"), providerTimestampMs = if (r["providerTimestampMs"] == null) null else r.long("providerTimestampMs"))
             }, sensorAvailability = document.objects("availability").map {
                 SensorAvailability(it.string("signal"), SensorAccess.valueOf(it.string("access")), it.string("detail"))
-            })
+            },
+            positions=if (current) PracticeCodec.positions(document) else emptyList(),
+            positionGaps=if (current) ranges("positionGaps") else emptyList(),
+            positionTimeBasis=if (current) SteeringTimeBasis.valueOf(document.string("positionTimeBasis")) else SteeringTimeBasis.UNKNOWN,
+            roadNetwork=if (current) document["roadNetwork"]?.jsonObject()?.let(PracticeCodec::network) else null,
+            hazardStateKnown=if (current) document.boolean("hazardStateKnown") else true,
+            signalSemantics=if (current) SignalSemantics.valueOf(document.string("signalSemantics")) else SignalSemantics.UNKNOWN,
+            turnDetectionComplete=if (current) document.boolean("turnDetectionComplete") else false,
+            signals=if (current) document.objects("signals").map { Observation(it.long("atMs"),it["value"]?.let { v -> SignalSelection.valueOf(v as String) },it.boolean("available")) } else emptyList(),
+            roads=if (current) document.objects("roads").map { r -> Observation(r.long("atMs"),r["value"]?.jsonObject()?.let {
+                RoadContext(it.string("matchedRoadId"),it.string("speedLimitRoadId"),it.number("speedLimitMps"),it.long("validUntilMs")) },r.boolean("available")) } else emptyList(),
+            turns=if (current) document.objects("turns").map { TurnManeuver(it.string("id"),it.long("startMs"),it.long("endMs"),TurnDirection.valueOf(it.string("direction")),it.strings("evidence").map(TurnEvidence::valueOf).toSet()) } else emptyList())
     }
 
     fun capturedContexts(document: JsonObject): List<ContextFinding> = document.objects("contextFindings").map {
@@ -66,6 +82,31 @@ object TraceReplay {
 
     fun verifyCaptured(document: JsonObject, report: EvaluationReport) {
         check(report.contextFindings == capturedContexts(document)) { "Replayed context results differ from the captured results" }
+        if (document.string("engineVersion") == "0.4.0") {
+            val actual = JsonDocuments.read(JsonDocuments.write(summary(report))) - "origin"
+            check(document["analysis"].jsonObject()-"origin" == actual) { "Replayed practice, quality, feedback or event results differ from the captured results" }
+        }
+    }
+
+    fun recording(input: DrivingSession, report: EvaluationReport): JsonObject {
+        require(input.origin == DataOrigin.LIVE && report.origin == DataOrigin.LIVE)
+        val session=PracticeInputs.normalize(input)
+        fun observations(rows: List<Observation<Double>>) = rows.map { mapOf("atMs" to it.atMs,"value" to it.value,"available" to it.available) }
+        fun ranges(rows: List<TimeRange>) = rows.map { mapOf("startMs" to it.startMs,"endMs" to it.endMs) }
+        return mapOf("engineVersion" to report.engineVersion,"ruleVersion" to report.config.ruleVersion,"origin" to session.origin.name,
+            "configSignature" to report.config.toString(),"practiceConfigSignature" to report.practiceConfig.toString(),
+            "startMs" to session.startMs,"endMs" to session.endMs,"truncated" to session.telemetryTruncated,
+            "speed" to observations(session.speeds),"steering" to observations(session.steeringAngles),
+            "speedGaps" to ranges(session.speedGaps),"steeringGaps" to ranges(session.steeringGaps),"steeringTimeBasis" to session.steeringTimeBasis.name,
+            "positions" to PracticeCodec.encodePositions(session.positions),"positionGaps" to ranges(session.positionGaps),"positionTimeBasis" to session.positionTimeBasis.name,
+            "roadNetwork" to session.roadNetwork?.let(PracticeCodec::encodeNetwork),"hazardStateKnown" to session.hazardStateKnown,
+            "signalSemantics" to session.signalSemantics.name,"turnDetectionComplete" to session.turnDetectionComplete,
+            "signals" to session.signals.map { mapOf("atMs" to it.atMs,"value" to it.value?.name,"available" to it.available) },
+            "roads" to session.roads.map { r -> mapOf("atMs" to r.atMs,"available" to r.available,"value" to r.value?.let { mapOf("matchedRoadId" to it.matchedRoadId,"speedLimitRoadId" to it.speedLimitRoadId,"speedLimitMps" to it.speedLimitMps,"validUntilMs" to it.validUntilMs) }) },
+            "turns" to session.turns.map { mapOf("id" to it.id,"startMs" to it.startMs,"endMs" to it.endMs,"direction" to it.direction.name,"evidence" to it.evidence.map { e -> e.name }.sorted()) },
+            "readings" to session.telemetry.map { mapOf("signal" to it.signal,"atMs" to it.atMs,"kind" to it.kind.name,"number" to it.number,"flag" to it.flag,"state" to it.state,"fields" to it.fields,"available" to it.available,"providerTimestampMs" to it.providerTimestampMs) },
+            "availability" to session.sensorAvailability.map { mapOf("signal" to it.signal,"access" to it.access.name,"detail" to it.detail) },
+            "contextFindings" to summary(report)["contextFindings"],"analysis" to summary(report))
     }
 
     fun summary(report: EvaluationReport): JsonObject = mapOf(
@@ -75,6 +116,7 @@ object TraceReplay {
         "events" to report.events.map { mapOf("kind" to it.kind.name, "startMs" to it.startMs, "endMs" to it.endMs, "reviewOnly" to it.reviewOnly, "evidence" to it.evidence) },
         "assessments" to report.assessments.map { mapOf("category" to it.category.name, "status" to it.status.name,
             "eligibleMs" to it.eligibleMs, "excludedMs" to it.excludedMs, "reasons" to it.reasons.map { reason -> reason.name }.sorted()) },
+        "practice" to PracticeCodec.summary(report.practice),"feedback" to PracticeCodec.feedback(report.feedback),
         "contextFindings" to report.contextFindings.map { mapOf("event" to it.event.name, "startMs" to it.startMs,
             "endMs" to it.endMs, "context" to it.context.name, "evidence" to it.evidence,
             "missing" to it.missing.sorted(), "lanePositionKnown" to it.lanePositionKnown) })

@@ -3,8 +3,6 @@ package com.noonmaru.routy.pleos.feature.evaluation
 import android.app.Application
 import com.noonmaru.routy.evaluation.*
 import com.noonmaru.routy.pleos.data.telemetry.*
-import org.json.JSONArray
-import org.json.JSONObject
 import java.io.File
 import android.os.SystemClock
 import android.util.Log
@@ -52,8 +50,8 @@ class EvaluationViewModel(application: Application) : AndroidViewModel(applicati
 
     fun replayExample() {
         cancelCapture()
-        val report = engine.evaluate(ExampleDrive.session())
-        mutableState.value = EvaluationState.Finished(report, "합성 주행 재생 · 실제 차량 데이터가 아닙니다.")
+        val report = engine.evaluate(PracticeScenarios.session("left-late"))
+        mutableState.value = EvaluationState.Finished(report, "합성 좌회전 시연 · 위치와 지도에서 회전을 검출하고 늦은 방향지시등 사용을 복습합니다. 실제 차량 데이터가 아닙니다.")
         logReport(report)
     }
 
@@ -63,7 +61,7 @@ class EvaluationViewModel(application: Application) : AndroidViewModel(applicati
 
     fun startCapture() {
         cancelCapture()
-        val current = Capture(SystemClock.elapsedRealtime(), generation)
+        val current = Capture(SystemClock.elapsedRealtime(), generation, System.currentTimeMillis())
         capture = current
         mutableState.value = EvaluationState.Recording(0, "30초 동안 공개 SDK 센서를 수집합니다.")
         val onReading: (SensorReading) -> Unit = { value -> viewModelScope.launch {
@@ -163,13 +161,24 @@ class EvaluationViewModel(application: Application) : AndroidViewModel(applicati
         val detail = "실제 AAOS 속도 ${current.speeds.size}개 · 시작 전 캐시 제외 ${current.olderSamples}개" +
             (if (intervals.isEmpty()) " · 수신 간격 확인 불가" else " · 간격 ${intervals.min()}~${intervals.max()}ms") +
             "\n${current.status}\n조향각 ${current.angles.size}개 · ${current.steeringStatus}" +
-            "\nSDK 기록 ${current.telemetry.size}개 · ${current.availability.size}개 채널 진단 · 도로 매칭·확정 회전은 아직 미연결"
+            "\nSDK 기록 ${current.telemetry.size}개 · ${current.availability.size}개 채널 진단 · 위치·도로·신호의 관측 품질은 결과에서 확인합니다."
         viewModelScope.launch {
-            val report = withContext(Dispatchers.Default) { engine.evaluate(session) }
-            val trace = withContext(Dispatchers.IO) { runCatching { saveTrace(session, report) }.getOrElse { "저장 실패: ${it.message}" } }
+            var mapDetail = ""
+            val map = withContext(Dispatchers.IO) {
+                runCatching {
+                    val file = File(getApplication<Application>().filesDir, "road-network.json")
+                    if (!file.exists()) null else {
+                        require(file.length() <= 4_194_304) { "Map input exceeds 4MiB" }
+                        PracticeCodec.liveNetwork(file.readText(),end,System.currentTimeMillis(),current.startEpochMs)
+                    }
+                }.getOrElse { mapDetail = "Map unavailable: ${it.message}"; null }
+            }
+            val normalized = PracticeInputs.normalize(session.copy(roadNetwork=map))
+            val report = withContext(Dispatchers.Default) { engine.evaluate(normalized) }
+            val trace = withContext(Dispatchers.IO) { runCatching { saveTrace(normalized, report) }.getOrElse { "저장 실패: ${it.message}" } }
             // A user may have started a new capture while evaluation was running.
             if (current.generation == generation && capture == null && mutableState.value is EvaluationState.Recording) {
-                mutableState.value = EvaluationState.Finished(report, "$detail\n센서 기록: $trace")
+                mutableState.value = EvaluationState.Finished(report, "$detail\n센서 기록: $trace\n$mapDetail")
                 logReport(report)
             }
         }
@@ -194,30 +203,18 @@ class EvaluationViewModel(application: Application) : AndroidViewModel(applicati
         Log.i("RoutyEvaluation", "steering=${report.steering}")
         Log.i("RoutyEvaluation", "telemetry=${report.telemetry.readings} channels=${report.telemetry.channels} availability=${report.telemetry.availability.groupingBy { it.access }.eachCount()}")
         report.contextFindings.forEach { Log.i("RoutyEvaluation", "fusion=$it") }
+        Log.i("RoutyEvaluation", "maneuvers=${report.practice.maneuvers.map { it.kind }} quality=${report.practice.quality.map { it.channel to it.eligibleMs }}")
+        Log.i("RoutyEvaluation", "feedback=${report.feedback.map { it.priority to it.title }}")
     }
 
     private fun saveTrace(session: DrivingSession, report: EvaluationReport): String {
         val root = File(getApplication<Application>().filesDir, "sensor-traces").apply { mkdirs() }
         val output = File(root, "latest.json")
-        val json = JSONObject().put("engineVersion", report.engineVersion).put("ruleVersion", report.config.ruleVersion)
-            .put("startMs", session.startMs).put("endMs", session.endMs).put("origin", session.origin.name)
-            .put("truncated", session.telemetryTruncated)
-            .put("speed", JSONArray(session.speeds.map { JSONObject().put("atMs", it.atMs).put("value", it.value ?: JSONObject.NULL).put("available", it.available) }))
-            .put("steering", JSONArray(session.steeringAngles.map { JSONObject().put("atMs", it.atMs).put("value", it.value ?: JSONObject.NULL).put("available", it.available) }))
-            .put("speedGaps", JSONArray(session.speedGaps.map { JSONObject().put("startMs", it.startMs).put("endMs", it.endMs) }))
-            .put("steeringGaps", JSONArray(session.steeringGaps.map { JSONObject().put("startMs", it.startMs).put("endMs", it.endMs) }))
-            .put("steeringTimeBasis", session.steeringTimeBasis.name)
-            .put("readings", JSONArray(session.telemetry.map { r -> JSONObject().put("signal", r.signal).put("atMs", r.atMs).put("kind", r.kind.name)
-                .put("number", r.number ?: JSONObject.NULL).put("flag", r.flag ?: JSONObject.NULL).put("state", r.state ?: JSONObject.NULL)
-                .put("available", r.available).put("providerTimestampMs", r.providerTimestampMs ?: JSONObject.NULL).put("fields", JSONObject(r.fields)) }))
-            .put("availability", JSONArray(session.sensorAvailability.map { JSONObject().put("signal", it.signal).put("access", it.access.name).put("detail", it.detail) }))
-            .put("contextFindings", JSONArray(report.contextFindings.map { JSONObject().put("event", it.event.name).put("context", it.context.name)
-                .put("startMs", it.startMs).put("endMs", it.endMs).put("evidence", JSONObject(it.evidence)).put("missing", JSONArray(it.missing.toList())).put("lanePositionKnown", it.lanePositionKnown) }))
-        output.writeText(json.toString(2))
+        output.writeText(JsonDocuments.write(TraceReplay.recording(session,report)))
         return "files/sensor-traces/latest.json"
     }
 
-    private class Capture(val startMs: Long, val generation: Long) {
+    private class Capture(val startMs: Long, val generation: Long, val startEpochMs: Long) {
         val telemetry = mutableListOf<SensorReading>()
         val availability = linkedMapOf<String, SensorAvailability>()
         var truncated = false

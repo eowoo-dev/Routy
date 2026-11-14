@@ -6,8 +6,14 @@ import kotlin.math.max
 import kotlin.math.min
 
 /** Deterministic batch/replay engine. One invocation contains exactly one trip window. */
-class DrivingEvaluationEngine(private val config: EvaluationConfig = EvaluationConfig()) {
-    fun evaluate(session: DrivingSession): EvaluationReport {
+class DrivingEvaluationEngine(private val config: EvaluationConfig = EvaluationConfig(), private val practiceConfig: PracticeConfig = PracticeConfig()) {
+    fun evaluate(input: DrivingSession): EvaluationReport {
+        val normalized = PracticeInputs.normalize(input)
+        val practice = PracticeAnalyzer(practiceConfig).analyze(normalized)
+        val session = normalized.copy(
+            roads=if (normalized.roads.isEmpty()) PracticeInputs.roads(normalized,practice) else normalized.roads,
+            turns=if (normalized.turns.isEmpty()) practice.confirmedTurns else normalized.turns,
+            turnDetectionComplete=normalized.turnDetectionComplete || (normalized.turns.isEmpty() && practice.turnDetectionComplete))
         val speeds = Timeline(session.speeds, session, config.speedMaxAgeMs, session.speedGaps) { value, _ ->
             when {
                 !value.isFinite() || value > config.maxPlausibleSpeedMps -> ExclusionReason.INVALID_VALUE
@@ -32,13 +38,27 @@ class DrivingEvaluationEngine(private val config: EvaluationConfig = EvaluationC
         val deferred = listOf(Category.LANE_KEEPING, Category.TRAFFIC_SIGNAL_RESPONSE, Category.FOLLOWING_DISTANCE)
             .map { Assessment(it, AssessmentStatus.NOT_ASSESSED, excludedMs = session.durationMs,
                 reasons = setOf(ExclusionReason.ENVIRONMENT_DATA_REQUIRED, ExclusionReason.RULE_NOT_IMPLEMENTED)) }
-        return EvaluationReport("0.3.0", config, session.origin, session.startMs, session.endMs,
+        val allAssessments = listOf(speedAssessment,motionAssessment,turnAssessment,steeringAssessment) + deferred
+        val orderedEvents = events.sortedWith(compareBy<EvaluationEvent> { it.startMs }.thenBy { it.kind.ordinal }.thenBy { it.endMs })
+        val contexts = fuseContext(session,orderedEvents)
+        val signalBoundaries = (listOf(session.startMs,session.endMs)+signals.boundaries()).filter { it in session.startMs..session.endMs }.distinct().sorted()
+        val signalEligible = if (session.signalSemantics != SignalSemantics.SELECTION_STATE) 0L else
+            signalBoundaries.zipWithNext().sumOf { (a,b) -> if (signals.read(a).value != null) b-a else 0L }
+        val signalReasons = signalBoundaries.dropLast(1).mapNotNull { signals.read(it).reason?.name }.toSet() +
+            (if (session.signalSemantics != SignalSemantics.SELECTION_STATE) setOf("UNKNOWN_SIGNAL_SEMANTICS") else emptySet()) +
+            (if (!session.hazardStateKnown) setOf("HAZARD_CONTEXT_UNKNOWN") else emptySet())
+        val quality = practice.quality + listOf(
+            ChannelQuality("accelerationInput",motionAssessment.eligibleMs,session.durationMs,session.speeds.size,motionAssessment.reasons.map { it.name }.toSet()),
+            ChannelQuality("steeringInput",steeringAssessment.eligibleMs,session.durationMs,session.steeringAngles.size,steeringAssessment.reasons.map { it.name }.toSet()),
+            ChannelQuality("turnSignalSelection",signalEligible,session.durationMs,session.signals.size,signalReasons))
+        val enrichedPractice = practice.copy(quality=quality)
+        return EvaluationReport("0.4.0", config, session.origin, session.startMs, session.endMs,
             listOf(speedAssessment, motionAssessment, turnAssessment, steeringAssessment) + deferred,
             speedMetrics, motionMetrics, turnMetrics,
-            events.sortedWith(compareBy<EvaluationEvent> { it.startMs }.thenBy { it.kind.ordinal }.thenBy { it.endMs }), steeringMetrics,
+            orderedEvents, steeringMetrics,
             TelemetrySummary(session.telemetry.map { it.signal }.distinct().size, session.telemetry.size,
                 session.telemetry.count { it.kind == ReadingKind.UPDATE }, session.telemetryTruncated, session.sensorAvailability),
-            fuseContext(session, events))
+            contexts,enrichedPractice,LearningFeedbackBuilder(practiceConfig,config.signalLeadMs).build(session,orderedEvents,contexts,enrichedPractice,allAssessments,turnMetrics),practiceConfig)
     }
 
     private fun evaluateSpeed(
@@ -189,6 +209,7 @@ class DrivingEvaluationEngine(private val config: EvaluationConfig = EvaluationC
                 !turn.evidence.containsAll(setOf(TurnEvidence.MATCHED_ROAD_TRANSITION, TurnEvidence.OBSERVED_HEADING_CHANGE)) -> ExclusionReason.UNCONFIRMED_TURN
                 turn.startMs - session.startMs < config.signalLeadMs -> ExclusionReason.INSUFFICIENT_LOOKBACK
                 session.signalSemantics != SignalSemantics.SELECTION_STATE -> ExclusionReason.UNKNOWN_SIGNAL_SEMANTICS
+                !session.hazardStateKnown -> ExclusionReason.HAZARD_CONTEXT_UNKNOWN
                 else -> null
             }
             if (invalid != null) { reasons += invalid; continue }

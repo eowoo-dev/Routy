@@ -62,6 +62,8 @@ docker compose -f compose.dev.yaml up -d --build
 
 주행 평가 엔진은 `apps/pleos/driving-evaluation`의 순수 Kotlin 모듈입니다. 속도 관리·가감속·확인된 회전의 방향지시등·조향 규칙과 복합 맥락 분석을 구현했습니다. 수집과 미평가 처리는 [주행 평가 엔진 가이드](docs/architecture/driving-evaluation.md), 고정 시나리오·에뮬레이터 자동화·기록 재생·CI 실행은 [시나리오 자동화 가이드](docs/architecture/driving-evaluation-testing.md)를 참고하세요.
 
+v0.4는 위치·지도 기반 회전/커브·차로 변경 후보 검출, 입력 품질과 이벤트 묶음, 한국어 복습 피드백을 제공합니다. 실제 지도 입력의 조건과 합성 시연 범위는 [행동 분석·학습 피드백 가이드](docs/architecture/driving-practice-analysis.md)에 정리했습니다.
+
 차량용 앱의 빌드 도구도 Compose의 `pleos` 서비스에서 실행합니다. `docker compose -f compose.dev.yaml build pleos` 후 `.\infra\pleos\install-windows.ps1`로 Docker 빌드 → Windows 에뮬레이터 설치·실행을 진행합니다. 자세한 내용은 [차량용 앱 개발 가이드](docs/architecture/pleos-development.md)를 참고하세요.
 
 - Pleos 에뮬레이터는 Android Studio 없이 Windows에서 직접 실행합니다. WHPX와 호스트 GPU를 사용합니다.

@@ -76,4 +76,7 @@ data class EvaluationReport(
     val steering: SteeringMetrics,
     val telemetry: TelemetrySummary,
     val contextFindings: List<ContextFinding>,
+    val practice: PracticeAnalysis,
+    val feedback: List<LearningFeedback>,
+    val practiceConfig: PracticeConfig = PracticeConfig(),
 )

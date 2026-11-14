@@ -1,0 +1,22 @@
+{
+  "cases": [
+    {"id":"left-prepared","requiredKind":"LEFT_TURN","events":[],"feedback":"충분히"},
+    {"id":"right-prepared","requiredKind":"RIGHT_TURN","events":[],"feedback":"충분히"},
+    {"id":"left-missing","requiredKind":"LEFT_TURN","events":["MISSING_TURN_SIGNAL"],"feedback":"관측되지"},
+    {"id":"left-late","requiredKind":"LEFT_TURN","events":["LATE_TURN_SIGNAL"],"feedback":"준비 시간이"},
+    {"id":"left-opposite","requiredKind":"LEFT_TURN","events":["OPPOSITE_TURN_SIGNAL"],"feedback":"방향지시등 기록"},
+    {"id":"left-interrupted","requiredKind":"LEFT_TURN","events":["INTERRUPTED_TURN_SIGNAL"],"feedback":"방향지시등 기록"},
+    {"id":"curve","requiredKind":"CURVE","events":[],"feedback":"커브"},
+    {"id":"lane-left-candidate","requiredKind":"LANE_CHANGE_LEFT_CANDIDATE","events":[],"feedback":"차로 변경으로 보이는"},
+    {"id":"lane-right-candidate","requiredKind":"LANE_CHANGE_RIGHT_CANDIDATE","events":[],"feedback":"차로 변경으로 보이는"},
+    {"id":"parking","requiredKind":"LOW_SPEED_MANEUVER","events":[],"feedback":"보류"},
+    {"id":"reverse","requiredKind":"REVERSE_MANEUVER","events":[],"feedback":"보류"},
+    {"id":"heading-only","requiredKind":"LEFT_TURN_CANDIDATE","events":[],"feedback":"확정하지 않은"},
+    {"id":"ambiguous-map","requiredKind":"LEFT_TURN_CANDIDATE","events":[],"feedback":"확정하지 않은"},
+    {"id":"position-gap","requiredKind":"INCOMPLETE","events":[],"feedback":"확정하지 않은"},
+    {"id":"incomplete-turn","requiredKind":"INCOMPLETE","events":[],"feedback":"확정하지 않은"},
+    {"id":"hazard-unknown","requiredKind":"LEFT_TURN","events":[],"feedback":"보류"},
+    {"id":"straight-corrections","requiredKind":"STRAIGHT","events":["RAPID_STEERING","REPEATED_STEERING_REVERSALS"],"feedback":"직진 구간"},
+    {"id":"mapped-speed-excess","requiredKind":"STRAIGHT","events":["SUSTAINED_SPEED_EXCESS"],"feedback":"도로 제한속도"}
+  ]
+}

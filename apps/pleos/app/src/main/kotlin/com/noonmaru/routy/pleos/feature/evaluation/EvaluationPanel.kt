@@ -16,6 +16,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import com.noonmaru.routy.evaluation.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -45,10 +51,10 @@ fun EvaluationPanel(model: EvaluationViewModel = viewModel()) {
         onDispose { owner.lifecycle.removeObserver(observer); model.cancelCapture() }
     }
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("주행 평가 엔진 v0.3", style = MaterialTheme.typography.headlineMedium)
+        Text("주행 평가 엔진 v0.4", style = MaterialTheme.typography.headlineMedium)
         Text("실험용 학습 지표입니다. 급격한 조작을 운전 실수로 확정하거나 종합 점수로 환산하지 않습니다.")
         Button(onClick = model::replayExample, enabled = state !is EvaluationState.Recording,
-            modifier = Modifier.heightIn(min = 64.dp)) { Text("합성 주행으로 엔진 확인") }
+            modifier = Modifier.heightIn(min = 64.dp)) { Text("회전 감지·학습 피드백 합성 시연") }
         OutlinedButton(onClick = {
             val speedPermission = "android.car.permission.CAR_SPEED"
             val requested = mutableListOf(speedPermission)
@@ -73,6 +79,7 @@ fun EvaluationPanel(model: EvaluationViewModel = viewModel()) {
 
 @Composable
 private fun ReportCard(report: EvaluationReport) {
+    var diagnosticsExpanded by rememberSaveable(report.startMs,report.origin) { mutableStateOf(false) }
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(when (report.origin) {
@@ -81,35 +88,105 @@ private fun ReportCard(report: EvaluationReport) {
                 DataOrigin.RECORDED -> "저장된 입력 재생 결과"
             }, style = MaterialTheme.typography.titleLarge)
             Text("규칙: ${report.config.ruleVersion} · 차량/도로 정확도 검증 전")
-            report.assessments.forEach {
-                val status = when (it.status) {
-                    AssessmentStatus.ASSESSED -> "지표 산출"
-                    AssessmentStatus.PARTIAL -> "일부 구간 산출"
-                    AssessmentStatus.NOT_ASSESSED -> "미평가"
-                    AssessmentStatus.NO_OPPORTUNITY -> "확인된 회전 입력 없음"
+            PracticeOverview(report)
+            OutlinedButton(onClick={ diagnosticsExpanded = !diagnosticsExpanded },
+                modifier=Modifier.heightIn(min=64.dp).semantics { stateDescription=if (diagnosticsExpanded) "펼침" else "접힘" }) {
+                Text(if (diagnosticsExpanded) "상세 센서 진단 접기" else "상세 센서 진단 보기")
+            }
+            if (diagnosticsExpanded) {
+                report.assessments.forEach {
+                    val status = when (it.status) {
+                        AssessmentStatus.ASSESSED -> "지표 산출"
+                        AssessmentStatus.PARTIAL -> "일부 구간 산출"
+                        AssessmentStatus.NOT_ASSESSED -> "미평가"
+                        AssessmentStatus.NO_OPPORTUNITY -> "확인된 회전 입력 없음"
+                    }
+                    val coverage = if (it.category == Category.TURN_SIGNAL_USE) "회전 입력 ${it.opportunities}건 / 평가 ${it.evaluatedOpportunities}건"
+                        else "관측 ${seconds(it.eligibleMs)}초 / 제외 ${seconds(it.excludedMs)}초"
+                    Text("${it.category.label()}: $status · $coverage")
+                    if (it.reasons.isNotEmpty()) Text("제외 근거: ${it.reasons.joinToString { reason -> reason.name }}", style = MaterialTheme.typography.bodySmall)
                 }
-                val coverage = if (it.category == Category.TURN_SIGNAL_USE) "회전 입력 ${it.opportunities}건 / 평가 ${it.evaluatedOpportunities}건"
-                    else "관측 ${seconds(it.eligibleMs)}초 / 제외 ${seconds(it.excludedMs)}초"
-                Text("${it.category.label()}: $status · $coverage")
-                if (it.reasons.isNotEmpty()) Text("제외 근거: ${it.reasons.joinToString { reason -> reason.name }}", style = MaterialTheme.typography.bodySmall)
+                Text("SDK 기록 ${report.telemetry.readings}개 · 실제 콜백 ${report.telemetry.updates}개 · 채널 ${report.telemetry.channels}개")
+                Text("지원 진단: ${report.telemetry.availability.groupingBy { it.access }.eachCount()}")
+                if (report.telemetry.truncated) Text("수집 상한 도달: 맥락 융합은 보류합니다.")
+                report.contextFindings.forEach {
+                    Text("복합 맥락: ${it.context} · 근거 ${it.evidence.filterKeys { key -> key != "interpretation" }} · 미확인 ${it.missing}")
+                }
+                Text("복습 이벤트 ${report.events.size}건", style = MaterialTheme.typography.titleMedium)
+                report.steering.meanAbsoluteRateDegPerSec?.let {
+                    Text("조향 평균/최대 변화 속도: ${String.format(Locale.ROOT, "%.1f / %.1f", it, report.steering.peakAbsoluteRateDegPerSec)}°/s · 유의미한 방향 반전 ${report.steering.significantReversals}회")
+                }
+                Text("조향 시각 기준: ${report.steering.timeBasis} · 차로 위치/유지 판정은 아닙니다.")
+                report.events.forEach { Text("${it.kind.label()} · ${seconds(it.startMs - report.startMs)}~${seconds(it.endMs - report.startMs)}초") }
+                Text("저크·미세한 부드러움 점수는 보정과 검증 전까지 산출하지 않습니다.")
             }
-            Text("SDK 기록 ${report.telemetry.readings}개 · 실제 콜백 ${report.telemetry.updates}개 · 채널 ${report.telemetry.channels}개")
-            Text("지원 진단: ${report.telemetry.availability.groupingBy { it.access }.eachCount()}")
-            if (report.telemetry.truncated) Text("수집 상한 도달: 맥락 융합은 보류합니다.")
-            report.contextFindings.forEach {
-                Text("복합 맥락: ${it.context} · 근거 ${it.evidence.filterKeys { key -> key != "interpretation" }} · 미확인 ${it.missing}")
-            }
-            Text("복습 이벤트 ${report.events.size}건", style = MaterialTheme.typography.titleMedium)
-            report.steering.meanAbsoluteRateDegPerSec?.let {
-                Text("조향 평균/최대 변화 속도: ${String.format(Locale.ROOT, "%.1f / %.1f", it, report.steering.peakAbsoluteRateDegPerSec)}°/s · 유의미한 방향 반전 ${report.steering.significantReversals}회")
-            }
-            Text("조향 시각 기준: ${report.steering.timeBasis} · 차로 위치/유지 판정은 아닙니다.")
-            report.events.forEach { Text("${it.kind.label()} · ${seconds(it.startMs - report.startMs)}~${seconds(it.endMs - report.startMs)}초") }
-            Text("저크·미세한 부드러움 점수는 보정과 검증 전까지 산출하지 않습니다.")
         }
     }
 }
 
+@Composable
+private fun PracticeOverview(report: EvaluationReport) {
+    Text("이번 연습의 복습",style=MaterialTheme.typography.titleLarge)
+    report.feedback.forEach { feedback ->
+        var expanded by rememberSaveable(report.startMs,feedback.id) { mutableStateOf(false) }
+        Card(modifier=Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                Text(when (feedback.priority) {
+                    ReviewPriority.PRACTICE -> "다음 연습 목표"
+                    ReviewPriority.REVIEW -> "상황 복습"
+                    ReviewPriority.CONTEXT -> "상황 참고"
+                    ReviewPriority.DATA_CHECK -> "데이터 확인"
+                },style=MaterialTheme.typography.labelLarge)
+                Text(feedback.title,style=MaterialTheme.typography.titleMedium)
+                Text(feedback.observation,style=MaterialTheme.typography.bodyLarge)
+                Text(feedback.nextPractice,style=MaterialTheme.typography.bodyLarge)
+                Text("${seconds(feedback.startMs-report.startMs)}~${seconds(feedback.endMs-report.startMs)}초 · "+when(feedback.strength) {
+                    EvidenceStrength.SUPPORTED -> "관측 근거 확인"
+                    EvidenceStrength.LIMITED -> "일부 근거로 설명"
+                    EvidenceStrength.INSUFFICIENT -> "추가 근거 필요"
+                })
+                OutlinedButton(onClick={ expanded = !expanded },modifier=Modifier.heightIn(min=64.dp).semantics {
+                    stateDescription=if (expanded) "펼침" else "접힘"
+                }) { Text(if (expanded) "이 피드백의 판단 근거 접기" else "이 피드백의 판단 근거 보기") }
+                if (expanded) {
+                    Text(feedback.evidence.entries.joinToString("\n") { "${it.key}: ${it.value}" })
+                    if (feedback.missing.isNotEmpty()) Text("미확인 근거: ${feedback.missing.joinToString()}")
+                }
+            }
+        }
+    }
+    Text("행동 관측 ${report.practice.maneuvers.size}건",style=MaterialTheme.typography.titleMedium)
+    report.practice.maneuvers.forEach {
+        Text("${it.kind.label()} · ${seconds(it.startMs-report.startMs)}~${seconds(it.endMs-report.startMs)}초")
+    }
+    Text("입력 품질 · 계산에 사용 가능한 구간",style=MaterialTheme.typography.titleMedium)
+    report.practice.quality.forEach {
+        val label=when(it.channel) {
+            "trajectory" -> "위치·헤딩 이동"
+            "roadMatching" -> "도로 매칭"
+            "accelerationInput" -> "가감속 입력"
+            "steeringInput" -> "조향 입력"
+            else -> "방향지시등 선택"
+        }
+        Text("$label: ${seconds(it.eligibleMs)} / ${seconds(it.totalMs)}초 (${String.format(Locale.ROOT,"%.0f",it.coverage*100)}%)")
+    }
+    Text("관측 비율은 판단 정확도나 운전 점수가 아닙니다. 차선 경계는 관측하지 않아 차로 유지 성공·실패를 확정하지 않습니다.")
+}
+
+private fun ManeuverKind.label() = when(this) {
+    ManeuverKind.STRAIGHT -> "직진 맥락"
+    ManeuverKind.CURVE -> "도로 형상을 따른 커브"
+    ManeuverKind.LEFT_TURN -> "연결 도로와 헤딩으로 확인한 좌회전"
+    ManeuverKind.RIGHT_TURN -> "연결 도로와 헤딩으로 확인한 우회전"
+    ManeuverKind.LEFT_TURN_CANDIDATE -> "좌회전 후보 · 도로 근거 미확인"
+    ManeuverKind.RIGHT_TURN_CANDIDATE -> "우회전 후보 · 도로 근거 미확인"
+    ManeuverKind.LANE_CHANGE_LEFT_CANDIDATE -> "좌측 차로 변경 후보 · 경계 통과 미확인"
+    ManeuverKind.LANE_CHANGE_RIGHT_CANDIDATE -> "우측 차로 변경 후보 · 경계 통과 미확인"
+    ManeuverKind.LOW_SPEED_MANEUVER -> "저속 조작"
+    ManeuverKind.REVERSE_MANEUVER -> "후진 맥락"
+    ManeuverKind.INCOMPLETE -> "조작 전후 관측 미완료"
+    ManeuverKind.UNKNOWN -> "행동 미확인"
+}
 private fun seconds(ms: Long) = String.format(Locale.ROOT, "%.1f", ms / 1_000.0)
 private fun Category.label() = when (this) {
     Category.SPEED_MANAGEMENT -> "제한속도 대비 속도 관리"
