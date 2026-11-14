@@ -1,0 +1,48 @@
+name: Driving evaluation scenarios
+
+on:
+  pull_request:
+    paths:
+      - 'apps/pleos/**'
+      - 'infra/pleos/**'
+      - '.github/workflows/driving-evaluation.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/pleos/**'
+      - 'infra/pleos/**'
+      - '.github/workflows/driving-evaluation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scenarios:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/pleos/driving-evaluation
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+          cache-dependency-path: |
+            apps/pleos/driving-evaluation/*.gradle.kts
+            apps/pleos/gradle/libs.versions.toml
+            apps/pleos/gradle/wrapper/gradle-wrapper.properties
+      - name: JVM tests and fixed scenarios (no Android SDK required)
+        run: sh ../gradlew --no-daemon --console=plain test run --args='--scenarios --output build/reports/scenarios.json'
+      - name: Integration oracle regression tests
+        run: python3 -m unittest discover -s ../../../infra/pleos -p 'test_emulator_scenarios.py'
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: driving-evaluation-results
+          path: |
+            apps/pleos/driving-evaluation/build/reports/
+            apps/pleos/driving-evaluation/build/test-results/

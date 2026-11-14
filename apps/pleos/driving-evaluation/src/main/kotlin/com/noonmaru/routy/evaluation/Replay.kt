@@ -29,7 +29,33 @@ object ExampleDrive {
     }
 }
 
-fun main() {
+fun main(args: Array<String>) {
+    fun option(name: String): String? = args.indexOf(name).takeIf { it >= 0 }?.let { index ->
+        require(index + 1 < args.size) { "Missing value for $name" }; args[index + 1]
+    }
+    fun write(value: Any) {
+        option("--output")?.let { path -> java.io.File(path).also { it.parentFile?.mkdirs() }.writeText(JsonDocuments.write(value)) }
+    }
+    if ("--scenarios" in args) {
+        val results = DemoScenarios.cases().map { scenario ->
+            val report = DrivingEvaluationEngine().evaluate(scenario.session())
+            val violations = scenario.violations(report)
+            println("${if (violations.isEmpty()) "PASS" else "FAIL"} ${scenario.id}: $violations")
+            mapOf("id" to scenario.id, "passed" to violations.isEmpty(), "violations" to violations, "report" to TraceReplay.summary(report))
+        }
+        write(mapOf("suite" to "demo-v1", "results" to results))
+        check(results.all { it["passed"] == true }) { "Scenario expectation failed" }
+        return
+    }
+    option("--trace")?.let { path ->
+        val document = TraceReplay.read(java.io.File(path))
+        val report = DrivingEvaluationEngine().evaluate(TraceReplay.session(document))
+        if ("--verify-captured" in args) TraceReplay.verifyCaptured(document, report)
+        write(TraceReplay.summary(report))
+        println("RECORDED REPLAY engine=${report.engineVersion} readings=${report.telemetry.readings} contexts=${report.contextFindings.size}")
+        return
+    }
+    require(args.isEmpty()) { "Use --scenarios [--output FILE] or --trace FILE [--verify-captured] [--output FILE]" }
     val report = DrivingEvaluationEngine().evaluate(ExampleDrive.session())
     println("SYNTHETIC REPLAY — NOT A REAL DRIVE OR VALIDATED DRIVING SCORE")
     println("engine=${report.engineVersion}, rules=${report.config.ruleVersion}")

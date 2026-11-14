@@ -9,6 +9,8 @@ out/
 .app-out-next/
 dist/
 coverage/
+__pycache__/
+*.py[cod]
 *.tsbuildinfo
 apps/web/src/generated/
 

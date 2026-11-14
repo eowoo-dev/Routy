@@ -1,0 +1,35 @@
+{
+  "version": "demo-v1",
+  "cases": [
+    {"id":"straight-steady","speedMps":10,"gear":"DRIVE","signal":"OFF","brake":false,"steering":"steady","events":[],"contexts":[]},
+    {"id":"stationary-wheel","speedMps":0,"gear":"PARK","signal":"OFF","brake":false,"steering":"wave","events":["RAPID_STEERING","REPEATED_STEERING_REVERSALS"],"contexts":["STATIONARY_MANEUVER"]},
+    {"id":"reverse-wheel","speedMps":-2,"gear":"REVERSE","signal":"OFF","brake":false,"steering":"wave","events":["RAPID_STEERING","REPEATED_STEERING_REVERSALS"],"contexts":["REVERSE_MANEUVER"]},
+    {"id":"moving-corrections","speedMps":10,"gear":"DRIVE","signal":"OFF","brake":false,"steering":"wave","events":["RAPID_STEERING","REPEATED_STEERING_REVERSALS"],"contexts":["UNRESOLVED","UNSIGNALLED_CORRECTION_CANDIDATE"]},
+    {"id":"signal-left-wheel","speedMps":10,"gear":"DRIVE","signal":"LEFT","brake":false,"steering":"wave","events":["RAPID_STEERING","REPEATED_STEERING_REVERSALS"],"contexts":["SIGNALLED_STEERING"]},
+    {"id":"signal-right-wheel","speedMps":10,"gear":"DRIVE","signal":"RIGHT","brake":false,"steering":"wave","events":["RAPID_STEERING","REPEATED_STEERING_REVERSALS"],"contexts":["SIGNALLED_STEERING"]},
+    {"id":"braking-wheel","speedMps":10,"gear":"DRIVE","signal":"OFF","brake":true,"steering":"wave","events":["RAPID_STEERING","REPEATED_STEERING_REVERSALS"],"contexts":["BRAKING_MANEUVER"]},
+    {"id":"cruise-wheel","speedMps":10,"gear":"DRIVE","signal":"OFF","brake":false,"cruise":"ACTIVATED","steering":"wave","events":["RAPID_STEERING","REPEATED_STEERING_REVERSALS"],"contexts":["CRUISE_CONTROL_ACTIVE"]},
+    {"id":"missing-brake","speedMps":10,"gear":"DRIVE","signal":"OFF","brake":false,"steering":"wave","quality":"missing-brake","events":["RAPID_STEERING","REPEATED_STEERING_REVERSALS"],"contexts":["UNRESOLVED"]},
+    {"id":"speed-gap","speedMps":10,"gear":"DRIVE","signal":"OFF","brake":false,"steering":"wave","quality":"speed-gap","events":["RAPID_STEERING","REPEATED_STEERING_REVERSALS"],"contexts":["UNRESOLVED"]},
+    {"id":"duplicate-speed","speedMps":10,"gear":"DRIVE","signal":"OFF","brake":false,"steering":"wave","quality":"duplicate-speed","events":["RAPID_STEERING","REPEATED_STEERING_REVERSALS"],"contexts":["UNRESOLVED"]},
+    {"id":"steering-gap","speedMps":10,"gear":"DRIVE","signal":"OFF","brake":false,"steering":"wave","quality":"steering-gap","events":[],"contexts":[]},
+    {"id":"inconsistent-moving-park","speedMps":10,"gear":"PARK","signal":"OFF","brake":false,"steering":"wave","events":["RAPID_STEERING","REPEATED_STEERING_REVERSALS"],"contexts":["INCONSISTENT_INPUTS"]},
+    {"id":"confirmed-left-turn","speedMps":5,"gear":"DRIVE","signal":"LEFT","brake":false,"steering":"steady","turn":"LEFT","adequatelySignalled":1,"events":[],"contexts":[]},
+    {"id":"confirmed-right-turn","speedMps":5,"gear":"DRIVE","signal":"RIGHT","brake":false,"steering":"steady","turn":"RIGHT","adequatelySignalled":1,"events":[],"contexts":[]},
+    {"id":"confirmed-turn-without-signal","speedMps":5,"gear":"DRIVE","signal":"OFF","brake":false,"steering":"steady","turn":"LEFT","adequatelySignalled":0,"events":["MISSING_TURN_SIGNAL"],"contexts":[]}
+  ],
+  "emulator": {
+    "captureSeconds":30,
+    "speedKph":36,
+    "warmupSeconds":7,
+    "phaseSeconds":6,
+    "settleSeconds":1.4,
+    "steeringIntervalSeconds":0.2,
+    "steeringDegrees":[0,60,120,60,0,-60,-120,-60],
+    "phases":[
+      {"id":"moving-corrections","mode":"Off","brake":0,"expectedContext":"UNSIGNALLED_CORRECTION_CANDIDATE","expectedState":"OFF","expectedBrake":false},
+      {"id":"signal-left-wheel","mode":"BlinkLeft","brake":0,"expectedContext":"SIGNALLED_STEERING","expectedState":"LEFT","expectedBrake":false},
+      {"id":"braking-wheel","mode":"Off","brake":30,"expectedContext":"BRAKING_MANEUVER","expectedState":"OFF","expectedBrake":true}
+    ]
+  }
+}

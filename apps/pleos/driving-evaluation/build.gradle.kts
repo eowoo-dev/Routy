@@ -10,4 +10,7 @@ java {
     targetCompatibility = JavaVersion.VERSION_17
 }
 application { mainClass.set("com.noonmaru.routy.evaluation.ReplayKt") }
-dependencies { testImplementation(kotlin("test-junit")) }
+dependencies {
+    implementation(libs.moshi.core)
+    testImplementation(kotlin("test-junit"))
+}
