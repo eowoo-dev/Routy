@@ -3,6 +3,221 @@ info:
   title: Routy API
   version: 0.1.0
 paths:
+  /api/auth/register:
+    post:
+      operationId: registerAccount
+      summary: Create an email account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AccountSignupInput'}
+      responses:
+        '201':
+          description: Success
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AccountSessionResponse'}
+        '400': {$ref: '#/components/responses/ApiFailure'}
+        '401': {$ref: '#/components/responses/ApiFailure'}
+        '403': {$ref: '#/components/responses/ApiFailure'}
+        '409': {$ref: '#/components/responses/ApiFailure'}
+        '410': {$ref: '#/components/responses/ApiFailure'}
+        '429': {$ref: '#/components/responses/ApiFailure'}
+        '503': {$ref: '#/components/responses/ApiFailure'}
+  /api/auth/login:
+    post:
+      operationId: loginAccount
+      summary: Sign in on the web
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AccountLoginInput'}
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AccountSessionResponse'}
+        '400': {$ref: '#/components/responses/ApiFailure'}
+        '401': {$ref: '#/components/responses/ApiFailure'}
+        '403': {$ref: '#/components/responses/ApiFailure'}
+        '409': {$ref: '#/components/responses/ApiFailure'}
+        '410': {$ref: '#/components/responses/ApiFailure'}
+        '429': {$ref: '#/components/responses/ApiFailure'}
+        '503': {$ref: '#/components/responses/ApiFailure'}
+  /api/auth/session:
+    get:
+      operationId: getAccountSession
+      summary: Read current web session
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AccountSessionResponse'}
+        '400': {$ref: '#/components/responses/ApiFailure'}
+        '401': {$ref: '#/components/responses/ApiFailure'}
+        '403': {$ref: '#/components/responses/ApiFailure'}
+        '409': {$ref: '#/components/responses/ApiFailure'}
+        '410': {$ref: '#/components/responses/ApiFailure'}
+        '429': {$ref: '#/components/responses/ApiFailure'}
+        '503': {$ref: '#/components/responses/ApiFailure'}
+  /api/auth/logout:
+    post:
+      operationId: logoutAccount
+      summary: Revoke current web session
+      security: [{accountCookie: []}]
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OkReceipt'}
+        '400': {$ref: '#/components/responses/ApiFailure'}
+        '401': {$ref: '#/components/responses/ApiFailure'}
+        '403': {$ref: '#/components/responses/ApiFailure'}
+        '409': {$ref: '#/components/responses/ApiFailure'}
+        '410': {$ref: '#/components/responses/ApiFailure'}
+        '429': {$ref: '#/components/responses/ApiFailure'}
+        '503': {$ref: '#/components/responses/ApiFailure'}
+  /api/vehicle-connection:
+    get:
+      operationId: getVehicleConnection
+      summary: Read linked account display name
+      security: [{installationBearer: []}]
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/VehicleConnection'}
+        '400': {$ref: '#/components/responses/ApiFailure'}
+        '401': {$ref: '#/components/responses/ApiFailure'}
+        '403': {$ref: '#/components/responses/ApiFailure'}
+        '409': {$ref: '#/components/responses/ApiFailure'}
+        '410': {$ref: '#/components/responses/ApiFailure'}
+        '429': {$ref: '#/components/responses/ApiFailure'}
+        '503': {$ref: '#/components/responses/ApiFailure'}
+  /api/vehicle-pairings:
+    post:
+      operationId: createVehiclePairing
+      summary: Issue a five-minute one-use pairing code
+      security: [{installationBearer: []}]
+      responses:
+        '201':
+          description: Success
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/VehiclePairingChallenge'}
+        '400': {$ref: '#/components/responses/ApiFailure'}
+        '401': {$ref: '#/components/responses/ApiFailure'}
+        '403': {$ref: '#/components/responses/ApiFailure'}
+        '409': {$ref: '#/components/responses/ApiFailure'}
+        '410': {$ref: '#/components/responses/ApiFailure'}
+        '429': {$ref: '#/components/responses/ApiFailure'}
+        '503': {$ref: '#/components/responses/ApiFailure'}
+  /api/account/vehicle:
+    get:
+      operationId: getAccountVehicle
+      summary: Read the account linked vehicle
+      security: [{accountCookie: []}]
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AccountVehicleResponse'}
+        '400': {$ref: '#/components/responses/ApiFailure'}
+        '401': {$ref: '#/components/responses/ApiFailure'}
+        '403': {$ref: '#/components/responses/ApiFailure'}
+        '409': {$ref: '#/components/responses/ApiFailure'}
+        '410': {$ref: '#/components/responses/ApiFailure'}
+        '429': {$ref: '#/components/responses/ApiFailure'}
+        '503': {$ref: '#/components/responses/ApiFailure'}
+  /api/account/pairings/preview:
+    post:
+      operationId: previewVehiclePairing
+      summary: Preview before confirming the connection
+      security: [{accountCookie: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PairingCodeInput'}
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PairingPreview'}
+        '400': {$ref: '#/components/responses/ApiFailure'}
+        '401': {$ref: '#/components/responses/ApiFailure'}
+        '403': {$ref: '#/components/responses/ApiFailure'}
+        '409': {$ref: '#/components/responses/ApiFailure'}
+        '410': {$ref: '#/components/responses/ApiFailure'}
+        '429': {$ref: '#/components/responses/ApiFailure'}
+        '503': {$ref: '#/components/responses/ApiFailure'}
+  /api/account/pairings/claim:
+    post:
+      operationId: claimVehiclePairing
+      summary: Confirm one account and one vehicle connection
+      security: [{accountCookie: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PairingClaimInput'}
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PairingClaimReceipt'}
+        '400': {$ref: '#/components/responses/ApiFailure'}
+        '401': {$ref: '#/components/responses/ApiFailure'}
+        '403': {$ref: '#/components/responses/ApiFailure'}
+        '409': {$ref: '#/components/responses/ApiFailure'}
+        '410': {$ref: '#/components/responses/ApiFailure'}
+        '429': {$ref: '#/components/responses/ApiFailure'}
+        '503': {$ref: '#/components/responses/ApiFailure'}
+  /api/account/driving-records:
+    get:
+      operationId: listAccountDrivingRecords
+      summary: Read records owned by this account
+      security: [{accountCookie: []}]
+      parameters:
+        - {in: query, name: limit, schema: {type: integer, minimum: 1, maximum: 50}}
+        - {in: query, name: cursor, schema: {type: string, format: uuid}}
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DrivingRecordPage'}
+        '400': {$ref: '#/components/responses/ApiFailure'}
+        '401': {$ref: '#/components/responses/ApiFailure'}
+        '403': {$ref: '#/components/responses/ApiFailure'}
+        '409': {$ref: '#/components/responses/ApiFailure'}
+        '410': {$ref: '#/components/responses/ApiFailure'}
+        '429': {$ref: '#/components/responses/ApiFailure'}
+        '503': {$ref: '#/components/responses/ApiFailure'}
+  /api/account/driving-records/{sessionId}:
+    get:
+      operationId: getAccountDrivingRecord
+      security: [{accountCookie: []}]
+      parameters:
+        - {in: path, name: sessionId, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200':
+          description: Account-owned record detail
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DrivingRecordDetail'}
+        '401': {$ref: '#/components/responses/ApiFailure'}
+        '404': {$ref: '#/components/responses/ApiFailure'}
+        '503': {$ref: '#/components/responses/ApiFailure'}
   /api/vehicle-installations:
     post:
       operationId: registerVehicleInstallation
@@ -133,6 +348,11 @@ paths:
                 $ref: '#/components/schemas/HealthResponse'
 components:
   securitySchemes:
+    accountCookie:
+      type: apiKey
+      in: cookie
+      name: routy_session
+      description: HttpOnly SameSite=Lax session cookie; Secure on HTTPS production
     installationBearer:
       type: http
       scheme: bearer
@@ -144,6 +364,86 @@ components:
         application/json:
           schema: {$ref: '#/components/schemas/ApiError'}
   schemas:
+    AccountProfile:
+      type: object
+      required: [id, email, displayName]
+      properties:
+        id: {type: string, format: uuid}
+        email: {type: string, format: email}
+        displayName: {type: string}
+    AccountSessionResponse:
+      type: object
+      required: [user]
+      properties:
+        user:
+          allOf: [{$ref: '#/components/schemas/AccountProfile'}]
+          nullable: true
+    AccountSignupInput:
+      type: object
+      required: [email, password, displayName]
+      properties:
+        email: {type: string, format: email, maxLength: 254}
+        password: {type: string, format: password, minLength: 10, maxLength: 128}
+        displayName: {type: string, minLength: 1, maxLength: 30}
+    AccountLoginInput:
+      type: object
+      required: [email, password]
+      properties:
+        email: {type: string, format: email}
+        password: {type: string, format: password, minLength: 10, maxLength: 128}
+    OkReceipt:
+      type: object
+      required: [ok]
+      properties:
+        ok: {type: boolean}
+    VehicleConnection:
+      type: object
+      required: [status]
+      properties:
+        status: {type: string, enum: [unlinked, connected]}
+        ownerName: {type: string, nullable: true}
+    VehiclePairingChallenge:
+      type: object
+      required: [id, code, expiresAt, expiresInSeconds, verificationUri]
+      properties:
+        id: {type: string, format: uuid}
+        code: {type: string, minLength: 8, maxLength: 8, description: Uppercase letters and digits without ambiguous characters}
+        expiresAt: {type: string, format: date-time}
+        expiresInSeconds: {type: integer}
+        verificationUri: {type: string, format: uri, description: Public first-party web URL with only the one-use code}
+    AccountVehicleResponse:
+      type: object
+      required: [vehicle]
+      properties:
+        vehicle:
+          type: object
+          nullable: true
+          required: [id, label]
+          properties:
+            id: {type: string, format: uuid}
+            label: {type: string}
+    PairingCodeInput:
+      type: object
+      required: [code]
+      properties:
+        code: {type: string, description: Eight characters; spaces and a hyphen are accepted}
+    PairingClaimInput:
+      type: object
+      required: [code, consent]
+      properties:
+        code: {type: string}
+        consent: {type: boolean}
+    PairingPreview:
+      type: object
+      required: [vehicleLabel, expiresAt]
+      properties:
+        vehicleLabel: {type: string}
+        expiresAt: {type: string, format: date-time}
+    PairingClaimReceipt:
+      type: object
+      required: [connected]
+      properties:
+        connected: {type: boolean}
     ApiError:
       type: object
       required: [code, message]

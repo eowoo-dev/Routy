@@ -43,3 +43,4 @@ jobs:
           pnpm dev > /tmp/routy-api.log 2>&1 &
           node --input-type=module -e 'for(let i=0;i<60;i++){try{if((await fetch("http://127.0.0.1:3000/api/health")).ok)process.exit(0)}catch{}await new Promise(r=>setTimeout(r,1000))}process.exit(1)'
           pnpm --filter @routy/web test:records
+          pnpm --filter @routy/web test:pairing

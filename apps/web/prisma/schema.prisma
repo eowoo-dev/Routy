@@ -17,6 +17,9 @@ model VehicleInstallation {
   secretHash String   @db.Char(64)
   createdAt  DateTime @default(now()) @db.Timestamptz(3)
   records    DrivingRecord[]
+  ownerId    String? @unique @db.Uuid
+  owner      Account? @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  pairings   VehiclePairing[]
 }
 
 model DrivingRecord {
@@ -39,4 +42,45 @@ model DrivingRecord {
 
   @@unique([installationId, sessionId])
   @@index([installationId, receivedAt(sort: Desc), id(sort: Desc)])
+}
+
+
+model Account {
+  id           String @id @default(uuid()) @db.Uuid
+  email        String @unique @db.VarChar(254)
+  displayName  String @db.VarChar(30)
+  passwordHash String @db.VarChar(256)
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  sessions     AccountSession[]
+  vehicle      VehicleInstallation?
+}
+
+model AccountSession {
+  id        String @id @default(uuid()) @db.Uuid
+  accountId String @db.Uuid
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  tokenHash String @unique @db.Char(64)
+  expiresAt DateTime @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  @@index([expiresAt])
+}
+
+model VehiclePairing {
+  id             String @id @default(uuid()) @db.Uuid
+  installationId String @db.Uuid
+  installation   VehicleInstallation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  codeHash       String @unique @db.Char(64)
+  status         String @default("PENDING") @db.VarChar(16)
+  expiresAt      DateTime @db.Timestamptz(3)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  consumedAt     DateTime? @db.Timestamptz(3)
+  @@index([installationId, status])
+  @@index([expiresAt])
+}
+
+model RequestLimit {
+  key       String @id @db.VarChar(100)
+  hits      Int
+  expiresAt DateTime @db.Timestamptz(3)
+  @@index([expiresAt])
 }
