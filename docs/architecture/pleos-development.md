@@ -99,3 +99,5 @@ Windows 최신 Android CLI가 앱 제어 정책으로 차단되는 현상이 있
 - [Maps/Navigation 개발 가이드](https://document.pleos.ai/docs/pleos-only/vehicle-app-developer-guide/navigation-app-development-guide)
 - [AGP 8.13 호환성](https://developer.android.com/build/releases/agp-8-13-0-release-notes)
 - [OpenAPI Kotlin 생성기](https://openapi-generator.tech/docs/generators/kotlin/)
+
+사용자 홈·계정 연결과 debug 전용 진단 화면 분리는 [사용자 화면과 차량 연결](user-experience.md)을 참고하세요.

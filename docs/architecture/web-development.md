@@ -73,7 +73,7 @@ docker compose -f compose.dev.yaml exec -e NEXT_PUBLIC_API_BASE_URL=https://YOUR
 - 공유 타입: `@routy/contracts`
 - Kotlin 클라이언트는 Pleos Gradle의 `:contracts:openApiGenerate`로 생성합니다. [차량용 앱 개발 환경](pleos-development.md)을 참고하세요.
 - `/api/health`는 API 프로세스의 생존 여부만 확인하며 DB 연결 상태를 의미하지 않습니다.
-- Prisma datasource는 PostgreSQL로 준비했습니다. 도메인 모델과 마이그레이션은 아직 없습니다. 모델을 추가한 뒤 `pnpm --filter @routy/web db:generate`와 `db:migrate`를 실행합니다.
+- Prisma는 PostgreSQL에 계정·차량 연결·주행 기록 모델과 마이그레이션을 제공합니다. 모델을 변경한 뒤 `pnpm --filter @routy/web db:generate`와 `db:migrate`를 실행합니다.
 
 ## 코드 구성 원칙
 
