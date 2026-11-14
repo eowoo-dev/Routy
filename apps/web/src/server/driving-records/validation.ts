@@ -35,7 +35,7 @@ export function upload(value:unknown):DrivingRecordUpload {
   const row=object(value);
   exact(row,["schemaVersion","origin","startedAt","endedAt","durationMs","engineVersion","ruleVersion","environmentRuleVersion","scenarioId","report"]);
   if(row.schemaVersion!==1 || !["LIVE","SYNTHETIC"].includes(String(row.origin)))throw new ApiProblem(400,"INVALID_INPUT","지원하지 않는 기록 형식 또는 출처입니다.");
-  if(!Number.isSafeInteger(row.durationMs) || Number(row.durationMs)<1 || Number(row.durationMs)>86400000)throw new ApiProblem(400,"INVALID_DURATION","주행 시간 범위를 확인해주세요.");
+  if(!Number.isSafeInteger(row.durationMs) || Number(row.durationMs)<1)throw new ApiProblem(400,"INVALID_DURATION","주행 시간 범위를 확인해주세요.");
   const date=(v:unknown)=>{
     const s=text(v,32);
     if(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(s) || !Number.isFinite(Date.parse(s)))throw new ApiProblem(400,"INVALID_TIME","UTC 시각이 필요합니다.");

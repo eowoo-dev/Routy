@@ -3,6 +3,86 @@ info:
   title: Routy API
   version: 0.1.0
 paths:
+  /api/driving-records/{sessionId}/parts/{index}:
+    put:
+      operationId: putDrivingRecordPart
+      summary: Idempotently upload one contiguous archive part (196608 decoded bytes maximum)
+      security: [{installationBearer: []}]
+      parameters:
+        - {name: sessionId, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: index, in: path, required: true, schema: {type: integer, minimum: 0, maximum: 99999999}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/DrivingRecordPartInput'}
+      responses:
+        '200':
+          description: Persisted or matching existing part
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DrivingRecordPartReceipt'}
+        '400': {$ref: '#/components/responses/ApiFailure'}
+        '401': {$ref: '#/components/responses/ApiFailure'}
+        '409': {$ref: '#/components/responses/ApiFailure'}
+        '413': {$ref: '#/components/responses/ApiFailure'}
+        '503': {$ref: '#/components/responses/ApiFailure'}
+  /api/driving-records/{sessionId}/complete:
+    post:
+      operationId: completeDrivingRecord
+      summary: Publish one trip only after every archive part and whole archive hash match
+      security: [{installationBearer: []}]
+      parameters:
+        - {name: sessionId, in: path, required: true, schema: {type: string, format: uuid}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/DrivingRecordCompletion'}
+      responses:
+        '201':
+          description: Completed
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DrivingRecordReceipt'}
+        '200':
+          description: Idempotent completion
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DrivingRecordReceipt'}
+        '400': {$ref: '#/components/responses/ApiFailure'}
+        '401': {$ref: '#/components/responses/ApiFailure'}
+        '409': {$ref: '#/components/responses/ApiFailure'}
+        '413': {$ref: '#/components/responses/ApiFailure'}
+        '503': {$ref: '#/components/responses/ApiFailure'}
+  /api/driving-records/{sessionId}/archive:
+    get:
+      operationId: downloadDrivingRecordArchive
+      security: [{installationBearer: []}]
+      parameters:
+        - {name: sessionId, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200':
+          description: Stream of complete per-window reports as NDJSON, bounded memory
+          content:
+            application/x-ndjson:
+              schema: {type: string, format: binary}
+        '401': {$ref: '#/components/responses/ApiFailure'}
+        '404': {$ref: '#/components/responses/ApiFailure'}
+  /api/account/driving-records/{sessionId}/archive:
+    get:
+      operationId: downloadAccountDrivingRecordArchive
+      security: [{accountCookie: []}]
+      parameters:
+        - {name: sessionId, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200':
+          description: Linked account full report stream
+          content:
+            application/x-ndjson:
+              schema: {type: string, format: binary}
+        '401': {$ref: '#/components/responses/ApiFailure'}
+        '404': {$ref: '#/components/responses/ApiFailure'}
   /api/auth/register:
     post:
       operationId: registerAccount
@@ -471,7 +551,7 @@ components:
         origin: {type: string, enum: [LIVE, SYNTHETIC]}
         startedAt: {type: string, format: date-time, description: UTC wall clock; distinct from report monotonic times}
         endedAt: {type: string, format: date-time}
-        durationMs: {type: integer, format: int64, minimum: 1, maximum: 86400000}
+        durationMs: {type: integer, format: int64, minimum: 1, maximum: 9007199254740991}
         engineVersion: {type: string, maxLength: 32}
         ruleVersion: {type: string, maxLength: 64}
         environmentRuleVersion: {type: string, maxLength: 64, nullable: true}
@@ -480,6 +560,34 @@ components:
           type: object
           additionalProperties: true
           description: Versioned evaluation summary with metrics, assessments, grouped coaching and original events. No raw telemetry or installation secret. startMs/endMs are monotonic, duration matches envelope. Client evaluation, not server-certified driving accuracy.
+    DrivingRecordPartInput:
+      type: object
+      additionalProperties: false
+      required: [sha256, data]
+      properties:
+        sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
+        data: {type: string, format: byte, maxLength: 262144}
+    DrivingRecordPartReceipt:
+      type: object
+      required: [index, sha256]
+      properties:
+        index: {type: integer, minimum: 0}
+        sha256: {type: string}
+    DrivingRecordArchive:
+      type: object
+      additionalProperties: false
+      required: [parts, bytes, sha256]
+      properties:
+        parts: {type: integer, minimum: 1, maximum: 100000000}
+        bytes: {type: integer, format: int64, minimum: 1, maximum: 9007199254740991}
+        sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
+    DrivingRecordCompletion:
+      type: object
+      additionalProperties: false
+      required: [record, archive]
+      properties:
+        record: {$ref: '#/components/schemas/DrivingRecordUpload'}
+        archive: {$ref: '#/components/schemas/DrivingRecordArchive'}
     DrivingRecordReceipt:
       type: object
       required: [id, sessionId, receivedAt]
@@ -510,6 +618,7 @@ components:
           required: [report]
           properties:
             report: {type: object, additionalProperties: true}
+            archive: {$ref: '#/components/schemas/DrivingRecordArchive'}
     DrivingRecordPage:
       type: object
       required: [items, nextCursor]

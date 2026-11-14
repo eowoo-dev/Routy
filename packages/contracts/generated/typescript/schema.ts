@@ -4,6 +4,72 @@
  */
 
 export interface paths {
+    "/api/driving-records/{sessionId}/parts/{index}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Idempotently upload one contiguous archive part (196608 decoded bytes maximum) */
+        put: operations["putDrivingRecordPart"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/driving-records/{sessionId}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Publish one trip only after every archive part and whole archive hash match */
+        post: operations["completeDrivingRecord"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/driving-records/{sessionId}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["downloadDrivingRecordArchive"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/account/driving-records/{sessionId}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["downloadAccountDrivingRecordArchive"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/register": {
         parameters: {
             query?: never;
@@ -403,6 +469,25 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        DrivingRecordPartInput: {
+            sha256: string;
+            /** Format: byte */
+            data: string;
+        };
+        DrivingRecordPartReceipt: {
+            index: number;
+            sha256: string;
+        };
+        DrivingRecordArchive: {
+            parts: number;
+            /** Format: int64 */
+            bytes: number;
+            sha256: string;
+        };
+        DrivingRecordCompletion: {
+            record: components["schemas"]["DrivingRecordUpload"];
+            archive: components["schemas"]["DrivingRecordArchive"];
+        };
         DrivingRecordReceipt: {
             /** Format: uuid */
             id: string;
@@ -436,6 +521,7 @@ export interface components {
             report: {
                 [key: string]: unknown;
             };
+            archive?: components["schemas"]["DrivingRecordArchive"];
         };
         DrivingRecordPage: {
             items: components["schemas"]["DrivingRecordSummary"][];
@@ -532,6 +618,126 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    putDrivingRecordPart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+                index: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DrivingRecordPartInput"];
+            };
+        };
+        responses: {
+            /** @description Persisted or matching existing part */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DrivingRecordPartReceipt"];
+                };
+            };
+            400: components["responses"]["ApiFailure"];
+            401: components["responses"]["ApiFailure"];
+            409: components["responses"]["ApiFailure"];
+            413: components["responses"]["ApiFailure"];
+            503: components["responses"]["ApiFailure"];
+        };
+    };
+    completeDrivingRecord: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DrivingRecordCompletion"];
+            };
+        };
+        responses: {
+            /** @description Idempotent completion */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DrivingRecordReceipt"];
+                };
+            };
+            /** @description Completed */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DrivingRecordReceipt"];
+                };
+            };
+            400: components["responses"]["ApiFailure"];
+            401: components["responses"]["ApiFailure"];
+            409: components["responses"]["ApiFailure"];
+            413: components["responses"]["ApiFailure"];
+            503: components["responses"]["ApiFailure"];
+        };
+    };
+    downloadDrivingRecordArchive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Stream of complete per-window reports as NDJSON, bounded memory */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/x-ndjson": string;
+                };
+            };
+            401: components["responses"]["ApiFailure"];
+            404: components["responses"]["ApiFailure"];
+        };
+    };
+    downloadAccountDrivingRecordArchive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Linked account full report stream */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/x-ndjson": string;
+                };
+            };
+            401: components["responses"]["ApiFailure"];
+            404: components["responses"]["ApiFailure"];
+        };
+    };
     registerAccount: {
         parameters: {
             query?: never;

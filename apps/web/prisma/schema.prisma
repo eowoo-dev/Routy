@@ -17,6 +17,7 @@ model VehicleInstallation {
   secretHash String   @db.Char(64)
   createdAt  DateTime @default(now()) @db.Timestamptz(3)
   records    DrivingRecord[]
+  recordParts DrivingRecordPart[]
   ownerId    String? @unique @db.Uuid
   owner      Account? @relation(fields: [ownerId], references: [id], onDelete: Restrict)
   pairings   VehiclePairing[]
@@ -31,7 +32,7 @@ model DrivingRecord {
   origin                 DrivingDataOrigin
   startedAt              DateTime @db.Timestamptz(3)
   endedAt                DateTime @db.Timestamptz(3)
-  durationMs             Int
+  durationMs             BigInt
   engineVersion          String @db.VarChar(32)
   ruleVersion            String @db.VarChar(64)
   environmentRuleVersion String? @db.VarChar(64)
@@ -39,9 +40,24 @@ model DrivingRecord {
   report                 Json @db.JsonB
   payloadHash            String @db.Char(64)
   receivedAt             DateTime @default(now()) @db.Timestamptz(3)
+  archiveParts           Int?
+  archiveBytes           BigInt?
+  archiveSha256          String? @db.Char(64)
 
   @@unique([installationId, sessionId])
   @@index([installationId, receivedAt(sort: Desc), id(sort: Desc)])
+}
+
+model DrivingRecordPart {
+  installationId String @db.Uuid
+  sessionId String @db.Uuid
+  index Int
+  installation VehicleInstallation @relation(fields: [installationId], references: [id], onDelete: Restrict)
+  sha256 String @db.Char(64)
+  bytes Bytes @db.ByteA
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  @@id([installationId, sessionId, index])
+  @@index([createdAt])
 }
 
 

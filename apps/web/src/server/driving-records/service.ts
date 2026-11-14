@@ -34,7 +34,11 @@ export async function put(installationId:string,sessionId:string,input:DrivingRe
 }
 const projection={id:true,sessionId:true,receivedAt:true,schemaVersion:true,origin:true,startedAt:true,endedAt:true,durationMs:true,engineVersion:true,ruleVersion:true,environmentRuleVersion:true,scenarioId:true} as const;
 type SummaryRow=Pick<DrivingRecord,keyof typeof projection>;
-function summary(row:SummaryRow):DrivingRecordSummary {return {...row,receivedAt:row.receivedAt.toISOString(),startedAt:row.startedAt.toISOString(),endedAt:row.endedAt.toISOString()};}
+function summary(row:SummaryRow):DrivingRecordSummary {
+  return {id:row.id,sessionId:row.sessionId,receivedAt:row.receivedAt.toISOString(),schemaVersion:row.schemaVersion,
+    origin:row.origin,startedAt:row.startedAt.toISOString(),endedAt:row.endedAt.toISOString(),durationMs:Number(row.durationMs),
+    engineVersion:row.engineVersion,ruleVersion:row.ruleVersion,environmentRuleVersion:row.environmentRuleVersion,scenarioId:row.scenarioId};
+}
 export async function list(installationId:string,url:URL) {
   const limitText=url.searchParams.get("limit")??"20";
   if(!/^(?:[1-9]|[1-4][0-9]|50)$/.test(limitText))throw new ApiProblem(400,"INVALID_LIMIT","목록 크기는 1~50입니다.");
@@ -46,5 +50,5 @@ export async function list(installationId:string,url:URL) {
 export async function detail(installationId:string,sessionId:string):Promise<DrivingRecordDetail> {
   const row=await db.drivingRecord.findUnique({where:{installationId_sessionId:{installationId,sessionId}}});
   if(!row)throw new ApiProblem(404,"NOT_FOUND","주행 기록이 없습니다.");
-  return {...summary(row),report:row.report as Record<string,unknown>};
+  return {...summary(row),report:row.report as Record<string,unknown>,...(row.archiveParts!=null && row.archiveSha256!=null?{archive:{parts:row.archiveParts,bytes:Number(row.archiveBytes),sha256:row.archiveSha256}}:{})};
 }
