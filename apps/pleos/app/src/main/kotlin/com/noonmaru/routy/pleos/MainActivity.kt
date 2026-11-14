@@ -9,20 +9,17 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import com.noonmaru.routy.pleos.feature.diagnostics.DiagnosticsScreen
+import android.content.Intent
+import com.noonmaru.routy.pleos.feature.home.RoutyHomeScreen
+import com.noonmaru.routy.pleos.data.records.RecordSync
 
-class MainActivity : ComponentActivity() {
+open class VehicleActivity : ComponentActivity() {
     private var vehicle: Vehicle? = null
-    private var vehicleStatus by mutableStateOf("SDK 초기화 대기")
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-        setContent { DiagnosticsScreen(vehicleStatus = vehicleStatus) }
-    }
+    protected var vehicleStatus by mutableStateOf("SDK 초기화 대기")
 
     override fun onStart() {
         super.onStart()
+        RecordSync.schedule(applicationContext)
         try {
             vehicle = Vehicle(applicationContext).also { it.initialize() }
             vehicleStatus = "SDK 초기화 요청 완료 · 차량 데이터는 아직 조회하지 않습니다."
@@ -42,5 +39,16 @@ class MainActivity : ComponentActivity() {
             vehicle = null
             super.onStop()
         }
+    }
+}
+
+
+class MainActivity:VehicleActivity() {
+    override fun onCreate(savedInstanceState:Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        setContent { RoutyHomeScreen(onDiagnostics={
+            if(BuildConfig.DEBUG)startActivity(Intent().setClassName(this,"com.noonmaru.routy.pleos.DiagnosticsActivity"))
+        }) }
     }
 }

@@ -13,5 +13,7 @@
     <uses-permission android:name="pleos.car.permission.CAR_TOLL" />
     <uses-permission android:name="pleos.car.permission.FUSED_LOCATION" />
     <uses-permission android:name="pleos.car.permission.NAVI_ROUTE" />
-    <application android:label="Routy Dev" android:networkSecurityConfig="@xml/network_security_config" tools:replace="android:label" />
+    <application android:label="Routy Dev" android:networkSecurityConfig="@xml/network_security_config" tools:replace="android:label" >
+        <activity android:name=".DiagnosticsActivity" android:exported="true" />
+    </application>
 </manifest>

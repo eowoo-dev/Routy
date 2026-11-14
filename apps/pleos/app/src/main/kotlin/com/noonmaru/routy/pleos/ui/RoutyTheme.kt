@@ -6,11 +6,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.material3.*
 import com.noonmaru.routy.pleos.R
 import org.json.JSONObject
 
-val RoutyFont=FontFamily(Font(R.font.suit_variable,FontWeight.Normal))
+@OptIn(androidx.compose.ui.text.ExperimentalTextApi::class)
+val RoutyFont=FontFamily(listOf(400,500,600,700).map {weight ->
+    Font(R.font.suit_variable,FontWeight(weight),variationSettings=FontVariation.Settings(FontVariation.weight(weight)))
+})
 @Composable fun RoutyTheme(content:@Composable ()->Unit) {
     val context=LocalContext.current
     val colors=remember {JSONObject(context.assets.open("routy.tokens.json").bufferedReader().use {it.readText()}).getJSONObject("colors")}

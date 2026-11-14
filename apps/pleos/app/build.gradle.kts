@@ -49,6 +49,7 @@ val validateReleaseApi by tasks.registering {
 tasks.matching { it.name == "preReleaseBuild" }.configureEach { dependsOn(validateReleaseApi) }
 
 dependencies {
+    implementation(libs.zxing.core)
     implementation(libs.androidx.work)
     implementation(libs.moshi.core)
     testImplementation(kotlin("test-junit"))

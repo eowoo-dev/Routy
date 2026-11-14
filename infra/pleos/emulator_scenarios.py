@@ -166,7 +166,7 @@ class Emulator:
         return json.loads(text)
 
     def start_capture(self):
-        output = self.shell("am", "start", "-W", "--user", self.user, "-n", PACKAGE + "/com.noonmaru.routy.pleos.MainActivity")
+        output = self.shell("am", "start", "-W", "--user", self.user, "-n", PACKAGE + "/com.noonmaru.routy.pleos.DiagnosticsActivity")
         if "Error" in output:
             raise RuntimeError(output)
         for _ in range(4):
