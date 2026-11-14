@@ -44,7 +44,7 @@ import com.noonmaru.routy.pleos.feature.evaluation.EvaluationState
                 enabled -> "자동 기록 대기를 준비하고 있어요."
                 else -> "자동 기록이 꺼져 있어요."
             },fontSize=22.sp)
-            Text("기록 중 끄면 현재 기록을 저장하고 자동 기록을 종료해요. 한 기록은 최대 10분이에요.",fontSize=18.sp)
+            Text("시간 제한 없이 P단이 10초 유지될 때까지 기록해요. 기록 중 끄면 현재 기록을 저장하고 자동 기록을 종료해요.",fontSize=18.sp)
             (trip.evaluation as? EvaluationState.Unavailable)?.let {Text(it.message,fontSize=22.sp,color=MaterialTheme.colorScheme.error)}
             if(trip.active)Button(onClick={context.startActivity(Intent(context,DrivingActivity::class.java))},modifier=Modifier.heightIn(min=80.dp)){Text("연습 상태 보기",fontSize=24.sp)}
         }

@@ -81,13 +81,13 @@ class TripService:Service() {
         val access=DrivingAccess.state.value
         val gear=if(access.known)access.gear else null
         when(policy.advance(AutoRecording.enabled.value,gear,TripStore.state.value.active,saving,SystemClock.elapsedRealtime())) {
-            AutoTripPolicy.Action.START -> if(checkSelfPermission("android.car.permission.CAR_SPEED")==PackageManager.PERMISSION_GRANTED)beginRecording(600_000)
+            AutoTripPolicy.Action.START -> if(checkSelfPermission("android.car.permission.CAR_SPEED")==PackageManager.PERMISSION_GRANTED)beginRecording(null)
             AutoTripPolicy.Action.FINISH -> finishRecording()
             AutoTripPolicy.Action.NONE -> Unit
         }
         if(!saving && TripStore.state.value.active)TripStore.current.value=TripStore.state.value.copy(phase=if(policy.parkSinceMs!=null)"PARK_WAIT" else "RECORDING",parkSinceMs=policy.parkSinceMs)
     }
-    private fun beginRecording(duration:Long) {
+    private fun beginRecording(duration:Long?) {
         if(TripStore.state.value.active || saving)return
         try {
             recorder.startCapture(duration)

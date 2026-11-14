@@ -181,8 +181,9 @@ class EvaluationController(private val application: Application, private val sco
         mutableState.value = EvaluationState.Unavailable("차량 속도 권한이 없어 실제 데이터 수집은 시작하지 않았습니다.")
     }
 
-    fun startCapture(durationMs:Long=30_000) {
-        require(durationMs in 5_000..600_000)
+    /** A null deadline is used for gear-controlled trips; timed capture is diagnostic only. */
+    fun startCapture(durationMs:Long?=30_000) {
+        require(durationMs == null || durationMs >= 5_000)
         check(capture == null && mutableState.value !is EvaluationState.Recording) { "이미 수집 또는 저장 중입니다" }
         cancelCapture()
         val current = Capture(SystemClock.elapsedRealtime(), generation, System.currentTimeMillis())
@@ -192,7 +193,7 @@ class EvaluationController(private val application: Application, private val sco
                 val environmentSource=EnvironmentSource()
                 while(capture===current) {
                     val row=withContext(Dispatchers.IO) { runCatching { environmentSource.poll() }.getOrNull() }
-                    if(capture===current && row!=null && row.sessionAtMs>=current.startMs && current.environment.size<2000) current.environment+=row
+                    if(capture===current && row!=null && row.sessionAtMs>=current.startMs) current.environment+=row
                     delay(100)
                 }
             }
@@ -200,7 +201,7 @@ class EvaluationController(private val application: Application, private val sco
         mutableState.value = EvaluationState.Recording(0, "차량 센서를 수집합니다. 화면을 벗어나도 계속됩니다.")
         val onReading: (SensorReading) -> Unit = { value -> scope.launch {
             if (capture === current && value.atMs >= current.startMs) {
-                if (current.telemetry.size < 200_000) current.telemetry += value else current.truncated = true
+                current.telemetry += value
             }
         } }
         val onAvailability: (SensorAvailability) -> Unit = { value -> scope.launch {
@@ -231,7 +232,7 @@ class EvaluationController(private val application: Application, private val sco
         )
         steeringSource.start(
             onSample = { sample ->
-                if (capture === current && sample.receivedAtMs >= current.startMs && current.angles.size < 20_000) {
+                if (capture === current && sample.receivedAtMs >= current.startMs) {
                     current.steeringGapStart?.let { start ->
                         if (sample.angleDeg != null && sample.receivedAtMs > start) {
                             current.steeringGaps += TimeRange(start, sample.receivedAtMs)
@@ -248,18 +249,13 @@ class EvaluationController(private val application: Application, private val sco
                 current.steeringGapStart = maxOf(current.startMs, current.angles.lastOrNull()?.atMs ?: current.startMs)
             } },
         )
-        deadline = scope.launch { delay(durationMs); finish(current) }
+        deadline = durationMs?.let { duration -> scope.launch { delay(duration); finish(current) } }
     }
 
     private fun accept(current: Capture, sample: SpeedSample) {
         if (sample.timestampMs < current.startMs) {
             current.olderSamples++
             return // Initial cached readings are not new observations during this capture.
-        }
-        if (current.speeds.size >= 20_000) {
-            current.status = "수집 상한 도달 · 기록을 종료합니다."
-            finish(current)
-            return
         }
         val available = sample.speedMps != null && sample.sourceTimestampNanos > 0 && sample.timestampMs <= sample.receivedAtMs
         val gapStart = current.gapStart
@@ -373,7 +369,7 @@ class EvaluationController(private val application: Application, private val sco
         var environmentJob: Job? = null
         val telemetry = mutableListOf<SensorReading>()
         val availability = linkedMapOf<String, SensorAvailability>()
-        var truncated = false
+        val truncated = false
         val speeds = mutableListOf<Observation<Double>>()
         val gaps = mutableListOf<TimeRange>()
         var gapStart: Long? = null
