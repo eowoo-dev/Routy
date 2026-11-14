@@ -71,6 +71,8 @@ docker compose --env-file .env.prod -f compose.prod.yaml run --rm --no-deps pleo
 
 ## 버전과 현재 범위
 
+주행 평가 모듈과 AAOS 속도 입력 진단이 추가되었습니다. 구현 범위와 테스트는 [주행 평가 엔진](driving-evaluation.md)을 참고하세요. 아래 초기 구성 검증은 2026-11-13 시점의 기록입니다.
+
 - JDK 21, Gradle 8.13, Android Gradle Plugin 8.13.2, Kotlin 2.2.21.
 - compileSdk 36, targetSdk 34, minSdk 28. 빌드 플랫폼과 에뮬레이터의 Android API는 서로 다를 수 있습니다.
 - Jetpack Compose BOM 2025.10.01, Pleos Vehicle SDK 2.3.2, OpenAPI Generator 7.17.0. 버전은 `apps/pleos/gradle/libs.versions.toml`에서 관리합니다.

@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.noonmaru.routy.pleos.BuildConfig
+import com.noonmaru.routy.pleos.feature.evaluation.EvaluationPanel
 
 @Composable
 fun DiagnosticsScreen(vehicleStatus: String, model: DiagnosticsViewModel = viewModel()) {
@@ -41,6 +42,7 @@ fun DiagnosticsScreen(vehicleStatus: String, model: DiagnosticsViewModel = viewM
                 ) {
                     Text("Routy 개발 환경", style = MaterialTheme.typography.headlineLarge)
                     Text("앱 실행과 서버 연결을 확인하는 개발용 화면입니다.", style = MaterialTheme.typography.bodyLarge)
+                    EvaluationPanel()
                     StatusCard("Pleos Vehicle SDK ${BuildConfig.VEHICLE_SDK_VERSION}", vehicleStatus)
                     StatusCard("서버 연결 · ${BuildConfig.API_BASE_URL}", when (val state = health) {
                         HealthState.Loading -> "확인 중…"

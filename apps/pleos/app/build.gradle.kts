@@ -11,6 +11,7 @@ val apiOrigin = providers.gradleProperty("routyApiBaseUrl").orElse("http://127.0
 fun quoted(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
 android {
+    useLibrary("android.car", false)
     namespace = "com.noonmaru.routy.pleos"
     compileSdk = 36
     defaultConfig {
@@ -47,6 +48,9 @@ val validateReleaseApi by tasks.registering {
 tasks.matching { it.name == "preReleaseBuild" }.configureEach { dependsOn(validateReleaseApi) }
 
 dependencies {
+    debugImplementation("ai.pleos.playground:FusedLocation:1.1.3")
+    debugImplementation("ai.pleos.playground:NaviHelper:3.0.5")
+    implementation(project(":driving-evaluation"))
     implementation(project(":contracts"))
     implementation(libs.vehicle.sdk)
     implementation(libs.androidx.activity.compose)

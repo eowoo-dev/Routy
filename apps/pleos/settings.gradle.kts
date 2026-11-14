@@ -18,5 +18,5 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "RoutyPleos"
-include(":app", ":contracts")
+include(":app", ":contracts", ":driving-evaluation")
 project(":contracts").projectDir = file("../../packages/contracts")

@@ -1,0 +1,133 @@
+package com.noonmaru.routy.pleos.feature.evaluation
+
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.noonmaru.routy.evaluation.AssessmentStatus
+import com.noonmaru.routy.evaluation.Category
+import com.noonmaru.routy.evaluation.DataOrigin
+import com.noonmaru.routy.evaluation.EvaluationReport
+import com.noonmaru.routy.evaluation.EventKind
+import java.util.Locale
+
+@Composable
+fun EvaluationPanel(model: EvaluationViewModel = viewModel()) {
+    val state by model.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val owner = LocalLifecycleOwner.current
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        if (it["android.car.permission.CAR_SPEED"] == true || context.checkSelfPermission("android.car.permission.CAR_SPEED") == PackageManager.PERMISSION_GRANTED) model.startCapture() else model.permissionDenied()
+    }
+    DisposableEffect(owner, model) {
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) model.cancelCapture() }
+        owner.lifecycle.addObserver(observer)
+        onDispose { owner.lifecycle.removeObserver(observer); model.cancelCapture() }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Text("주행 평가 엔진 v0.3", style = MaterialTheme.typography.headlineMedium)
+        Text("실험용 학습 지표입니다. 급격한 조작을 운전 실수로 확정하거나 종합 점수로 환산하지 않습니다.")
+        Button(onClick = model::replayExample, enabled = state !is EvaluationState.Recording,
+            modifier = Modifier.heightIn(min = 64.dp)) { Text("합성 주행으로 엔진 확인") }
+        OutlinedButton(onClick = {
+            val speedPermission = "android.car.permission.CAR_SPEED"
+            val requested = mutableListOf(speedPermission)
+            val location = "pleos.car.permission.FUSED_LOCATION"
+            if (com.noonmaru.routy.pleos.BuildConfig.DEBUG) requested += location
+            val missing = requested.filter { context.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
+            if (missing.isEmpty()) model.startCapture() else permission.launch(missing.toTypedArray())
+        }, enabled = state !is EvaluationState.Recording, modifier = Modifier.heightIn(min = 64.dp)) {
+            Text("실제 센서 전체 30초 수집·분석")
+        }
+        when (val current = state) {
+            EvaluationState.Idle -> Text("합성 재생과 실제 센서 수집은 별도로 표시됩니다. 실제 수집은 이 화면이 열려 있을 때만 동작합니다.")
+            is EvaluationState.Recording -> Text("실제 센서 수집 중 · 속도 ${current.samples}개\n${current.status}")
+            is EvaluationState.Unavailable -> Text(current.message)
+            is EvaluationState.Finished -> {
+                Text(current.detail)
+                ReportCard(current.report)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReportCard(report: EvaluationReport) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(when (report.origin) {
+                DataOrigin.SYNTHETIC -> "합성 데이터 결과 · 실제 주행 평가 아님"
+                DataOrigin.LIVE -> "실제 AAOS 입력 결과"
+                DataOrigin.RECORDED -> "저장된 입력 재생 결과"
+            }, style = MaterialTheme.typography.titleLarge)
+            Text("규칙: ${report.config.ruleVersion} · 차량/도로 정확도 검증 전")
+            report.assessments.forEach {
+                val status = when (it.status) {
+                    AssessmentStatus.ASSESSED -> "지표 산출"
+                    AssessmentStatus.PARTIAL -> "일부 구간 산출"
+                    AssessmentStatus.NOT_ASSESSED -> "미평가"
+                    AssessmentStatus.NO_OPPORTUNITY -> "확인된 회전 입력 없음"
+                }
+                val coverage = if (it.category == Category.TURN_SIGNAL_USE) "회전 입력 ${it.opportunities}건 / 평가 ${it.evaluatedOpportunities}건"
+                    else "관측 ${seconds(it.eligibleMs)}초 / 제외 ${seconds(it.excludedMs)}초"
+                Text("${it.category.label()}: $status · $coverage")
+                if (it.reasons.isNotEmpty()) Text("제외 근거: ${it.reasons.joinToString { reason -> reason.name }}", style = MaterialTheme.typography.bodySmall)
+            }
+            Text("SDK 기록 ${report.telemetry.readings}개 · 실제 콜백 ${report.telemetry.updates}개 · 채널 ${report.telemetry.channels}개")
+            Text("지원 진단: ${report.telemetry.availability.groupingBy { it.access }.eachCount()}")
+            if (report.telemetry.truncated) Text("수집 상한 도달: 맥락 융합은 보류합니다.")
+            report.contextFindings.forEach {
+                Text("복합 맥락: ${it.context} · 근거 ${it.evidence.filterKeys { key -> key != "interpretation" }} · 미확인 ${it.missing}")
+            }
+            Text("복습 이벤트 ${report.events.size}건", style = MaterialTheme.typography.titleMedium)
+            report.steering.meanAbsoluteRateDegPerSec?.let {
+                Text("조향 평균/최대 변화 속도: ${String.format(Locale.ROOT, "%.1f / %.1f", it, report.steering.peakAbsoluteRateDegPerSec)}°/s · 유의미한 방향 반전 ${report.steering.significantReversals}회")
+            }
+            Text("조향 시각 기준: ${report.steering.timeBasis} · 차로 위치/유지 판정은 아닙니다.")
+            report.events.forEach { Text("${it.kind.label()} · ${seconds(it.startMs - report.startMs)}~${seconds(it.endMs - report.startMs)}초") }
+            Text("저크·미세한 부드러움 점수는 보정과 검증 전까지 산출하지 않습니다.")
+        }
+    }
+}
+
+private fun seconds(ms: Long) = String.format(Locale.ROOT, "%.1f", ms / 1_000.0)
+private fun Category.label() = when (this) {
+    Category.SPEED_MANAGEMENT -> "제한속도 대비 속도 관리"
+    Category.ACCELERATION_CONTROL -> "가감속 패턴"
+    Category.TURN_SIGNAL_USE -> "회전 시 방향지시등"
+    Category.STEERING_CONTROL -> "조향 조작 패턴"
+    Category.LANE_KEEPING -> "차로 유지"
+    Category.TRAFFIC_SIGNAL_RESPONSE -> "신호 대응"
+    Category.FOLLOWING_DISTANCE -> "차간거리"
+}
+private fun EventKind.label() = when (this) {
+    EventKind.SUSTAINED_SPEED_EXCESS -> "설정 기준보다 높은 속도 지속"
+    EventKind.RAPID_ACCELERATION -> "급격한 가속 관측"
+    EventKind.RAPID_DECELERATION -> "급격한 감속 관측 · 원인 미확인"
+    EventKind.MISSING_TURN_SIGNAL -> "회전 전 방향지시등 미사용 관측"
+    EventKind.LATE_TURN_SIGNAL -> "회전 전 방향지시등 준비 시간 부족"
+    EventKind.OPPOSITE_TURN_SIGNAL -> "회전 방향과 다른 방향지시등"
+    EventKind.INTERRUPTED_TURN_SIGNAL -> "회전 전 방향지시등 해제 관측"
+    EventKind.RAPID_STEERING -> "급격한 핸들 회전 관측 · 원인 미확인"
+    EventKind.REPEATED_STEERING_REVERSALS -> "반복적인 좌우 조향 조작 관측"
+}
