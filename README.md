@@ -72,3 +72,6 @@ v0.4는 위치·지도 기반 회전/커브·차로 변경 후보 검출, 입력
 - Windows 실행 방법과 두 환경의 검증 결과는 [infra/pleos/README.md](infra/pleos/README.md)를 참고하세요.
 
 완료 주행 기록의 공통 API·DB·설치 인증·오프라인 전송 대기는 [주행 기록 업로드 안내](docs/architecture/driving-evaluation.md#주행-기록-api와-서버-업로드)를 참고하세요.
+
+
+주행 중 화면 제한과 독립적인 센서 수집·저장, P/D 전환과 백그라운드 자동 검증은 [주행 수집 서비스](docs/architecture/driving-service.md)를 참고하세요.
