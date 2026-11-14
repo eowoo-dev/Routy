@@ -81,7 +81,7 @@ fun EvaluationPanel(model: EvaluationViewModel = viewModel()) {
                 modifier=Modifier.heightIn(min=64.dp)) { Text("완료된 환경 기록 분석") }
         }
         when (val current = state) {
-            EvaluationState.Idle -> Text("합성 재생과 실제 센서 수집은 별도로 표시됩니다. 실제 수집은 이 화면이 열려 있을 때만 동작합니다.")
+            EvaluationState.Idle -> Text("합성 재생과 실제 센서 수집은 별도로 표시됩니다. 실제 수집은 포그라운드 서비스에서 계속됩니다.")
             is EvaluationState.Recording -> Text("실제 센서 수집 중 · 속도 ${current.samples}개\n${current.status}")
             is EvaluationState.Unavailable -> Text(current.message)
             is EvaluationState.Finished -> {

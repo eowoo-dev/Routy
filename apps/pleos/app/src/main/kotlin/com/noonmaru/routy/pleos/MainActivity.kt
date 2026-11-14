@@ -46,6 +46,7 @@ open class VehicleActivity : ComponentActivity() {
 class MainActivity:VehicleActivity() {
     override fun onCreate(savedInstanceState:Bundle?) {
         super.onCreate(savedInstanceState)
+        com.noonmaru.routy.pleos.feature.trip.DrivingAccess.connect(this)
         enableEdgeToEdge()
         setContent { RoutyHomeScreen(onDiagnostics={
             if(BuildConfig.DEBUG)startActivity(Intent().setClassName(this,"com.noonmaru.routy.pleos.DiagnosticsActivity"))

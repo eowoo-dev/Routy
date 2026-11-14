@@ -48,9 +48,12 @@ fun RoutyHomeScreen(onDiagnostics:()->Unit,model:ConnectionViewModel=viewModel()
         if(owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))model.foreground(true)
         onDispose {owner.lifecycle.removeObserver(observer);model.foreground(false)}
     }
+    val access by com.noonmaru.routy.pleos.feature.trip.DrivingAccess.state.collectAsStateWithLifecycle()
     RoutyTheme {
         Surface(Modifier.fillMaxSize(),color=MaterialTheme.colorScheme.background) {
-            BoxWithConstraints(Modifier.safeDrawingPadding()) {
+            if(!access.parked) {
+                Box(Modifier.fillMaxSize().safeDrawingPadding().padding(48.dp),contentAlignment=Alignment.Center){Text("주차 상태를 확인하고 있어요. 계정 연결은 주차 후 이용해주세요.",fontSize=28.sp)}
+            } else BoxWithConstraints(Modifier.safeDrawingPadding()) {
                 val compact=maxWidth<1050.dp
                 Row(Modifier.fillMaxSize()) {
                     Column(Modifier.width(if(compact)150.dp else 190.dp).fillMaxHeight().padding(24.dp),verticalArrangement=Arrangement.spacedBy(20.dp)) {
@@ -108,6 +111,7 @@ fun RoutyHomeScreen(onDiagnostics:()->Unit,model:ConnectionViewModel=viewModel()
         }
         if(!compact)RouteArt(Modifier.width(400.dp).height(330.dp))
     }
+    com.noonmaru.routy.pleos.feature.trip.PracticePanel()
     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(24.dp)) {
         InfoPanel("함께 연습할 계정",if(state.connected)"${state.ownerName}님과 연결됐어요" else "스마트폰·웹과 한 번 연결해보세요",if(state.connected)"주행 기록을 내 계정에서 이어볼 수 있어요." else "차량에서는 로그인 정보를 입력하지 않아도 돼요.",Modifier.weight(1f))
         InfoPanel("내 주행 기록",if(state.sent>0)"저장된 기록 ${state.sent}건" else "첫 연습의 기록을 기다려요",if(state.pending+state.failed>0)"전송 대기 ${state.pending}건 · 확인 필요 ${state.failed}건" else "완료된 기록은 인터넷 연결 후 자동으로 전송돼요.",Modifier.weight(1f))
