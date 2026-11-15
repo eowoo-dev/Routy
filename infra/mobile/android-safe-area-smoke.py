@@ -12,6 +12,7 @@ for mode in ["gestural","threebutton"]:
     folder=output/mode;folder.mkdir(parents=True,exist_ok=True)
     adb("shell","cmd","overlay","enable-exclusive","--category",f"com.android.internal.systemui.navbar.{mode}")
     adb("shell","am","force-stop","org.eowoo.routy")
+    adb("shell","rm","-f",*[f"/sdcard/Android/data/org.eowoo.routy/cache/safe-area-{name}.png" for name in ["portrait","landscape","keyboard"]])
     result=adb("shell","am","instrument","-w","-r","-e","class","org.eowoo.routy.SafeAreaTest","org.eowoo.routy.test/androidx.test.runner.AndroidJUnitRunner")
     (folder/"instrumentation.txt").write_text(result)
     print(result[-2500:])

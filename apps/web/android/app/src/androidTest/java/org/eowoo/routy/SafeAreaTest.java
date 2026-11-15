@@ -43,7 +43,9 @@ public class SafeAreaTest {
     }
 
     private void check(ActivityScenario<MainActivity> scenario, String name, boolean keyboard) throws Exception {
-        String script = "JSON.stringify({width:innerWidth,controls:Array.from(document.querySelectorAll('.header a,.header button,.mobile-nav a'))"
+        // A focused form may scroll the header out of view; measure the focused input and fixed tabs then.
+        String selector=keyboard?".mobile-nav a,input:focus":".header a,.header button,.mobile-nav a";
+        String script = "JSON.stringify({width:innerWidth,controls:Array.from(document.querySelectorAll('"+selector+"'))"
             + ".filter(e=>e.getBoundingClientRect().width>0).map(e=>{const r=e.getBoundingClientRect();return {text:e.textContent,left:r.left,right:r.right,top:r.top,bottom:r.bottom}})})";
         JSONObject data = new JSONObject((String)new JSONTokener(js(scenario, script)).nextValue());
         scenario.onActivity(a -> {

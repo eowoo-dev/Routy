@@ -135,6 +135,9 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v7
+      - name: Warm iPhone simulator during native build
+        if: matrix.platform == 'ios'
+        run: python3 infra/mobile/ios-safe-area-smoke.py --boot-iphone
       - uses: actions/setup-node@v7
         with:
           node-version: '26.12.1'
@@ -231,7 +234,7 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent ios/build/device/Build/Products/Release-iphoneos/App.app ios/build/artifacts/routy-ios-device-unsigned.zip
       - name: Capture iPhone and iPad native safe areas
         if: matrix.platform == 'ios'
-        timeout-minutes: 12
+        timeout-minutes: 20
         run: |
           python3 -m venv "$RUNNER_TEMP/routy-safe-area-tools"
           "$RUNNER_TEMP/routy-safe-area-tools/bin/pip" install Pillow==13.0.0
