@@ -20,7 +20,7 @@ from disk_trace import disk_trace
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURE = ROOT / "apps/pleos/driving-evaluation/src/main/resources/scenarios/demo-v1.json"
-PACKAGE = "com.noonmaru.routy.pleos.debug"
+PACKAGE = "org.eowoo.routy.pleos.debug"
 
 
 def console_client_count(response):
@@ -196,7 +196,7 @@ class Emulator:
         for _ in range(6):
             # A newly bound UX/gear connection can still be conservative on the
             # first launch. Retry the parked entry, never override the restriction.
-            output = self.shell("am", "start", "-W", "--user", self.user, "-n", PACKAGE + "/com.noonmaru.routy.pleos.DiagnosticsActivity")
+            output = self.shell("am", "start", "-W", "--user", self.user, "-n", PACKAGE + "/org.eowoo.routy.pleos.DiagnosticsActivity")
             if "Error" in output:raise RuntimeError(output)
             self.shell("uiautomator", "dump", "/sdcard/routy-scenario-window.xml")
             root = ET.fromstring(self.shell("cat", "/sdcard/routy-scenario-window.xml"))

@@ -150,8 +150,8 @@ class RunnerFailureTest(unittest.TestCase):
             def shell(self,*args,**kwargs):
                 if args[:2]==('am','start'):self.starts+=1
                 if args[0]=='cat':
-                    if self.starts==1:return '<hierarchy><node package="com.noonmaru.routy.pleos.debug" text="연습 기록을 저장했어요" /></hierarchy>'
-                    return '<hierarchy><node package="com.noonmaru.routy.pleos.debug" text="실제 센서 전체 30초 수집·분석" bounds="[100,200][300,260]" enabled="true" /></hierarchy>'
+                    if self.starts==1:return '<hierarchy><node package="org.eowoo.routy.pleos.debug" text="연습 기록을 저장했어요" /></hierarchy>'
+                    return '<hierarchy><node package="org.eowoo.routy.pleos.debug" text="실제 센서 전체 30초 수집·분석" bounds="[100,200][300,260]" enabled="true" /></hierarchy>'
                 if args[0]=='input':self.taps.append(args)
                 return ''
         emu=RebindingEmulator()

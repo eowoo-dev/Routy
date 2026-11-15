@@ -1,0 +1,12 @@
+{
+  "team": {
+    "nameKo": "어쩌다우리",
+    "nameEn": "EoWoo",
+    "domain": "eowoo.org",
+    "website": "https://eowoo.org"
+  },
+  "applicationIds": {
+    "mobile": "org.eowoo.routy",
+    "vehicle": "org.eowoo.routy.pleos"
+  }
+}

@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./design": "./design/routy.tokens.json"
+    "./design": "./design/routy.tokens.json",
+    "./identity": "./identity.json"
   },
   "scripts": {
     "generate": "openapi-typescript openapi/routy.yaml -o generated/typescript/schema.ts",
@@ -14,5 +15,10 @@
   "devDependencies": {
     "openapi-typescript": "7.13.0",
     "typescript": "^5"
-  }
+  },
+  "author": {
+    "name": "EoWoo",
+    "url": "https://eowoo.org"
+  },
+  "homepage": "https://eowoo.org"
 }

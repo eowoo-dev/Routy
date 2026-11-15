@@ -132,7 +132,7 @@ AAOS·Pleos·지도 어댑터 (app)
 
 ```powershell
 # 디버그 앱의 최신 수집 JSON (본인 앱 데이터만)
-& "$env:LOCALAPPDATA/Android/Sdk/platform-tools/adb.exe" shell run-as com.noonmaru.routy.pleos.debug --user 10 cat files/sensor-traces/latest.json
+& "$env:LOCALAPPDATA/Android/Sdk/platform-tools/adb.exe" shell run-as org.eowoo.routy.pleos.debug --user 10 cat files/sensor-traces/latest.json
 ```
 
 참고: [공식 Vehicle SDK 샘플](https://document.pleos.ai/en/docs/pleos-only/tutorial/vehicle-sdk-sample-app), [Vehicle 권한](https://document.pleos.ai/api-reference/connect-sdk-pleos/Vehicle/vehicle-permission), [FusedLocation 설정](https://document.pleos.ai/en/docs/pleos-only/connect-sdk-pleos/FusedLocation/project-setup), [NaviHelper 설정](https://document.pleos.ai/en/docs/pleos-only/connect-sdk-pleos/NaviHelper/importing-sdk).

@@ -59,12 +59,12 @@ docker compose --env-file .env.prod -f compose.prod.yaml up -d --build
 서버의 실제 HTTPS API 주소를 빌드 환경에 지정합니다.
 
 ```powershell
-docker compose -f compose.dev.yaml exec -e NEXT_PUBLIC_API_BASE_URL=https://YOUR_API_HOST/api web pnpm build:app
+docker compose -f compose.dev.yaml exec -e NEXT_PUBLIC_API_BASE_URL=https://eowoo.org/api web pnpm build:app
 ```
 
-`YOUR_API_HOST`는 실제 배포 주소로 바꿉니다. 빌드 스크립트는 `.app-build`에 소스를 복사하면서 `src/app/api`, `src/app/admin`, `src/server`, `src/generated`, `src/proxy.ts`를 제외합니다. `ROUTY_TARGET=app`으로 정적 export를 수행해 `apps/web/out`을 생성하고 임시 디렉터리를 정리합니다. 원본 서버 소스는 변경하지 않습니다.
+운영 도메인은 `eowoo.org`이며, 실제 서버 배포와 DNS 및 HTTPS 설정 후 사용합니다. 빌드 스크립트는 `.app-build`에 소스를 복사하면서 `src/app/api`, `src/app/admin`, `src/server`, `src/generated`, `src/proxy.ts`를 제외합니다. `ROUTY_TARGET=app`으로 정적 export를 수행해 `apps/web/out`을 생성하고 임시 디렉터리를 정리합니다. 원본 서버 소스는 변경하지 않습니다.
 
-웹은 기본 `/api`, 모바일은 `NEXT_PUBLIC_API_BASE_URL`로 요청합니다. 앱에 포함되는 `NEXT_PUBLIC_*` 값에는 비밀 키를 넣지 않습니다. Capacitor의 Android·iOS 네이티브 프로젝트와 배포 Actions는 후속 작업입니다. 앱 ID는 초기값 `com.noonmaru.routy`이며 스토어 등록 전에 확정합니다.
+웹은 기본 `/api`, 모바일은 `NEXT_PUBLIC_API_BASE_URL`로 요청합니다. 앱에 포함되는 `NEXT_PUBLIC_*` 값에는 비밀 키를 넣지 않습니다. Capacitor의 Android·iOS 네이티브 프로젝트와 배포 Actions는 후속 작업입니다. 스마트폰 앱 ID는 `org.eowoo.routy`이며 개발 팀은 어쩌다우리(EoWoo)입니다.
 
 ## API 계약과 DB
 

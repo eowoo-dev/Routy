@@ -2,6 +2,14 @@ openapi: 3.0.3
 info:
   title: Routy API
   version: 0.1.0
+  contact:
+    name: EoWoo
+    url: https://eowoo.org
+servers:
+  - url: https://eowoo.org
+    description: EoWoo production API
+  - url: http://localhost:3000
+    description: Local development API
 paths:
   /api/driving-records/{sessionId}/parts/{index}:
     put:

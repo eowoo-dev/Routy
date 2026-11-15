@@ -191,7 +191,7 @@ def main():
                 emu.shell('input','swipe',(x1+x2)//2,y2-90,(x1+x2)//2,y1+90,250)
             time.sleep(.4)
         raise RuntimeError('User control unavailable: '+str(names))
-    def home():emu.shell('am','start','-W','--user',emu.user,'-f','0x10008000','-a','android.intent.action.MAIN','-c','android.intent.category.LAUNCHER','-n',PACKAGE+'/com.noonmaru.routy.pleos.feature.trip.DrivingActivity')
+    def home():emu.shell('am','start','-W','--user',emu.user,'-f','0x10008000','-a','android.intent.action.MAIN','-c','android.intent.category.LAUNCHER','-n',PACKAGE+'/org.eowoo.routy.pleos.feature.trip.DrivingActivity')
     def stage(name,seconds=4):
         if heartbeat_errors:raise RuntimeError(heartbeat_errors[0])
         baseline=journal().get('samples',0)

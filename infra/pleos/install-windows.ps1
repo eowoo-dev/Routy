@@ -22,5 +22,5 @@ if ($LASTEXITCODE -ne 0) { throw 'ADB reverse failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'Console extension ADB reverse failed.' }
 & $adb -s $Serial install -r $apk
 if ($LASTEXITCODE -ne 0) { throw 'APK install failed.' }
-& $adb -s $Serial shell am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n 'com.noonmaru.routy.pleos.debug/com.noonmaru.routy.pleos.feature.trip.DrivingActivity'
+& $adb -s $Serial shell am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n 'org.eowoo.routy.pleos.debug/org.eowoo.routy.pleos.feature.trip.DrivingActivity'
 if ($LASTEXITCODE -ne 0) { throw 'Activity launch failed.' }

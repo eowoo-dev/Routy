@@ -21,5 +21,10 @@
     "dev:down": "docker compose -f compose.dev.yaml down",
     "prod:up": "docker compose --env-file .env.prod -f compose.prod.yaml up -d --build",
     "prod:down": "docker compose --env-file .env.prod -f compose.prod.yaml down"
-  }
+  },
+  "author": {
+    "name": "EoWoo",
+    "url": "https://eowoo.org"
+  },
+  "homepage": "https://eowoo.org"
 }

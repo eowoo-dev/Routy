@@ -12,7 +12,7 @@ import time
 import urllib.request
 
 ROOT=Path(__file__).resolve().parents[2]
-PACKAGE="com.noonmaru.routy.pleos.debug"
+PACKAGE="org.eowoo.routy.pleos.debug"
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
@@ -70,7 +70,7 @@ def main():
         for session_id in offline:assert local(session_id)["state"]=="PENDING"
         print("PASS two offline records retained",flush=True)
         shell("am","force-stop","--user",user,PACKAGE)
-        shell("am","start","-W","--user",user,"-a","android.intent.action.MAIN","-c","android.intent.category.LAUNCHER","-n",PACKAGE+"/com.noonmaru.routy.pleos.feature.trip.DrivingActivity")
+        shell("am","start","-W","--user",user,"-a","android.intent.action.MAIN","-c","android.intent.category.LAUNCHER","-n",PACKAGE+"/org.eowoo.routy.pleos.feature.trip.DrivingActivity")
         for session_id in offline:assert local(session_id)["state"]=="PENDING"
         print("PASS queue survived process restart",flush=True)
         compose("start");stopped=False

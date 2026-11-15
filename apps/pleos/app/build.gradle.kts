@@ -7,26 +7,38 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+group = "org.eowoo.routy"
+val identity = groovy.json.JsonSlurper().parse(rootProject.file("../../packages/contracts/identity.json")) as Map<*, *>
+val team = identity["team"] as Map<*, *>
+val applicationIds = identity["applicationIds"] as Map<*, *>
+val vehiclePackage = applicationIds["vehicle"] as String
+val releaseApiOrigin = providers.gradleProperty("routyApiBaseUrl").orElse(team["website"] as String)
 val apiOrigin = providers.gradleProperty("routyApiBaseUrl").orElse("http://127.0.0.1:3000")
 fun quoted(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
 android {
     sourceSets.getByName("main").assets.srcDir("../../../packages/contracts/design")
     useLibrary("android.car", false)
-    namespace = "com.noonmaru.routy.pleos"
+    namespace = vehiclePackage
     compileSdk = 36
     defaultConfig {
-        applicationId = "com.noonmaru.routy.pleos"
+        applicationId = vehiclePackage
         minSdk = 28
         targetSdk = 34
         versionCode = 1
         versionName = "0.1.0"
+        resValue("string", "team_name", team["nameKo"] as String)
+        resValue("string", "team_name_en", team["nameEn"] as String)
+        resValue("string", "team_domain", team["domain"] as String)
         buildConfigField("String", "API_BASE_URL", quoted(apiOrigin.get().trimEnd('/')))
         buildConfigField("String", "VEHICLE_SDK_VERSION", quoted(libs.versions.vehicle.get()))
     }
     buildTypes {
         debug { applicationIdSuffix = ".debug"; versionNameSuffix = "-dev" }
-        release { isMinifyEnabled = false }
+        release {
+            isMinifyEnabled = false
+            buildConfigField("String", "API_BASE_URL", quoted(releaseApiOrigin.get().trimEnd('/')))
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -39,10 +51,10 @@ kotlin { compilerOptions.jvmTarget.set(JvmTarget.JVM_17) }
 
 val validateReleaseApi by tasks.registering {
     doLast {
-        val url = URI(apiOrigin.get())
+        val url = URI(releaseApiOrigin.get())
         require(url.scheme == "https" && !url.host.isNullOrBlank() && url.userInfo == null
             && url.rawQuery == null && url.fragment == null && url.path in listOf("", "/")) {
-            "Release requires -ProutyApiBaseUrl=https://YOUR_API_HOST (origin without /api)."
+            "Release requires -ProutyApiBaseUrl=https://eowoo.org (origin without /api)."
         }
     }
 }
