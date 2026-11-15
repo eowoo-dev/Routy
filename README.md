@@ -81,6 +81,8 @@ python -X utf8 infra/pleos/test-submission.py --serial emulator-5554
 
 제출 패키징은 운영 HTTPS 주소를 명시해 빌드하고, 전용 키로 서명한 후 서명과 정렬 및 debug 비활성화를 확인합니다. 처음 실행하면 전용 서명 키와 비밀번호를 Git에서 제외된 `.local-signing/`에 생성합니다. **재빌드 및 업데이트 설치를 위해 이 파일들을 별도 보관하고 공개하지 마세요.** 기존 제출본과 동일한 서명이 필요한 경우 원래 키를 사용해야 합니다.
 
+제출본 검증(2026-11-15): 평가 엔진 테스트 169개 및 차량 앱 release 단위 테스트 41개를 통과했습니다. APK에 포함된 13개 시나리오의 예상 이벤트와 합성 출처 보존을 검사했으며, 서명된 release APK에서 기본 4개와 중간 해제 후 재점등 사례를 각각 실행하여 완료, 로컬 저장, 합성 표시 및 정지/초기화를 확인했습니다. 서명 및 정렬 검사와 debug 비활성화 검사도 통과했습니다.
+
 개발용 웹, Virtual Console 확장, 에뮬레이터 입력 자동화는 아래 가이드와 [시나리오 자동화 가이드](docs/architecture/driving-evaluation-testing.md)를 참고하세요. 콘솔 연동 개발 진단은 debug 전용이며, 제출 release APK의 오프라인 합성 시연과 별도입니다.
 
 팀 표기와 패키지 정책은 [프로젝트 식별자 안내](docs/architecture/project-identity.md)를 참고하세요.
