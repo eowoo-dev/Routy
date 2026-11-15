@@ -103,6 +103,18 @@ TestFlight 업로드 성공과 Apple의 빌드 처리 완료는 다릅니다. �
 
 ## 자동 검증과 실제 업로드의 구분
 
+### 앱 아이콘 재생성
+
+스마트폰 앱 아이콘은 기존 화면 헤더의 루티 길 모양 로고를 사용합니다. `infra/mobile/generate-icons.py`가 Android 밀도별 기본 및 원형 아이콘과 적응형 전경, iOS 1024px 원본을 생성합니다. Android 적응형 배경과 단색 아이콘도 같은 로고로 구성합니다. Pillow가 설치된 Python 환경에서 실행합니다.
+
+```sh
+python infra/mobile/generate-icons.py --store-output /path/to/store-graphics
+```
+
+아이콘 변경은 새 네이티브 빌드에 포함해야 합니다. 기존 TestFlight 또는 Play 빌드의 아이콘을 서버 배포만으로 바꿀 수는 없습니다.
+
+### 검증 범위
+
 - Node 테스트는 버전 증가, 배포 대상 제한, 누락된 키, 잘못된 인증 JSON 및 임시 파일 정리를 확인합니다.
 - Python 테스트는 만료, 팀과 앱 식별자 불일치, 개발용 및 Ad Hoc 프로파일을 거부하는지 확인합니다.
 - 기존 빌드 CI는 키 없이 Android와 iOS 앱을 빌드하고, 별도의 일회용 CI 키로 Android AAB를 서명한 뒤 서명을 검증합니다. 이 키로 만든 AAB는 스토어 배포용이 아닙니다.
