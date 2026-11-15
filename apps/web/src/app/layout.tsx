@@ -37,7 +37,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body>
         <EmotionRegistry>
           <GlobalStyles />
-          <Providers>{children}</Providers>
+          <Providers><div className="safe-area-screen">{children}</div></Providers>
         </EmotionRegistry>
       </body>
     </html>

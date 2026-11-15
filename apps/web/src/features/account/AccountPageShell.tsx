@@ -8,8 +8,8 @@ export function AccountPageShell({ children }: { children: ReactNode }) {
 }
 
 const Shell = styled.div`
-  min-height:100dvh;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
-  .skip{position:absolute;left:16px;top:-100px;}.skip:focus{top:8px;background:var(--surface);padding:12px;z-index:10;}
+  min-height:var(--routy-safe-height);
+  .skip{position:absolute;left:calc(16px + var(--routy-safe-left));top:-100px;}.skip:focus{top:calc(8px + var(--routy-safe-top));background:var(--surface);padding:12px;z-index:40;}
   header,footer{max-width:1040px;margin:auto;padding:24px 32px;display:flex;justify-content:space-between;align-items:center;gap:24px;flex-wrap:wrap;}
   header{border-bottom:1px solid var(--border);}header a,footer a{display:inline-flex;align-items:center;min-height:48px;color:var(--primary);font-weight:650;}
   .wordmark{font-size:32px;font-weight:800;letter-spacing:-1.5px;}main{max-width:820px;margin:auto;padding:48px 32px 72px;}

@@ -163,7 +163,24 @@ jobs:
       - name: Build Android
         if: matrix.platform == 'android'
         working-directory: apps/web/android
-        run: sh ./gradlew --no-daemon --console=plain assembleDebug assembleRelease bundleRelease
+        run: sh ./gradlew --no-daemon --console=plain assembleDebug assembleRelease bundleRelease assembleDebugAndroidTest
+      - name: Enable emulator acceleration
+        if: matrix.platform == 'android'
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-routy-kvm.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Verify Android native safe areas
+        if: matrix.platform == 'android'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: python3 infra/mobile/android-safe-area-smoke.py
       - uses: actions/upload-artifact@v7
         if: matrix.platform == 'android'
         with:
@@ -212,6 +229,16 @@ jobs:
           mkdir -p ios/build/artifacts
           ditto -c -k --sequesterRsrc --keepParent ios/build/simulator/Build/Products/Debug-iphonesimulator/App.app ios/build/artifacts/routy-ios-simulator.zip
           ditto -c -k --sequesterRsrc --keepParent ios/build/device/Build/Products/Release-iphoneos/App.app ios/build/artifacts/routy-ios-device-unsigned.zip
+      - name: Capture iPhone and iPad native safe areas
+        if: matrix.platform == 'ios'
+        run: python3 infra/mobile/ios-safe-area-smoke.py
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: routy-safe-area-${{ matrix.platform }}
+          path: build/safe-area/${{ matrix.platform }}/
+          if-no-files-found: warn
+          retention-days: 7
       - uses: actions/upload-artifact@v7
         if: matrix.platform == 'ios'
         with:

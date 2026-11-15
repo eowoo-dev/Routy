@@ -1,10 +1,12 @@
 "use client";
 import { css, Global } from "@emotion/react";
 import tokens from "@routy/contracts/design";
+import { safeAreaCss } from "@/shared/safe-area";
 export default function GlobalStyles() {
   return <Global styles={css`
     @font-face {font-family: SUIT;src:url('/fonts/SUIT-Variable.woff2') format('woff2');font-style:normal;font-weight:100 900;font-display:swap;}
     :root {${Object.entries(tokens.colors).map(([key,value])=>`--${key}:${value};`).join("")}}
+    ${safeAreaCss}
     *,*::before,*::after {box-sizing:border-box;}
     html {color-scheme:light;scroll-behavior:smooth;}
     body {margin:0;font-family:SUIT,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;font-size:16px;line-height:1.65;color:var(--ink);background:var(--background);word-break:keep-all;overflow-wrap:anywhere;}
