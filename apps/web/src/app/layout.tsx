@@ -14,12 +14,21 @@ export const metadata: Metadata = {
   creator: identity.team.nameEn,
   publisher: identity.team.nameEn,
   referrer: "no-referrer",
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "16x16 32x32 48x48", type: "image/x-icon" },
+      { url: "/icon.svg", type: "image/svg+xml" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+  manifest: "/site.webmanifest",
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  themeColor: "#175F55",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

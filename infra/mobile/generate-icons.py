@@ -1,4 +1,4 @@
-"""Render Routy's existing road mark into native and store icons (requires Pillow)."""
+"""Render Routy's existing road mark into native, web and store icons (requires Pillow)."""
 from pathlib import Path
 import argparse
 from PIL import Image, ImageDraw
@@ -43,11 +43,15 @@ def main():
         icon(size,circular=True).save(folder/"ic_launcher_round.png")
         icon(foreground,transparent=True).save(folder/"ic_launcher_foreground.png")
     icon(1024).save(ROOT/"apps/web/ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png")
+    public=ROOT/"apps/web/public"
+    icon(48).save(public/"favicon.ico",format="ICO",sizes=[(16,16),(32,32),(48,48)],bitmap_format="bmp")
+    for name,size in [("apple-touch-icon.png",180),("icon-192.png",192),("icon-512.png",512)]:
+        icon(size).save(public/name)
     if args.store_output:
         args.store_output.mkdir(parents=True,exist_ok=True)
         icon(512).save(args.store_output/"google-play-icon-512.png")
         icon(1024).save(args.store_output/"app-icon-master-1024.png")
-    print("Generated Android density/adaptive icons and iOS 1024px icon.")
+    print("Generated Android, iOS, web and optional store icons.")
 
 
 if __name__=="__main__":

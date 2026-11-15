@@ -113,6 +113,8 @@ python infra/mobile/generate-icons.py --store-output /path/to/store-graphics
 
 아이콘 변경은 새 네이티브 빌드에 포함해야 합니다. 기존 TestFlight 또는 Play 빌드의 아이콘을 서버 배포만으로 바꿀 수는 없습니다.
 
+같은 도구가 웹의 다중 크기 `favicon.ico`, Apple 홈 화면용 180px 이미지와 웹 매니페스트용 192px 및 512px 이미지도 생성합니다. SVG 파비콘과 웹 매니페스트는 `apps/web/public`에 있으며 루트 메타데이터에서 연결합니다. 웹 아이콘은 NAS 재배포 후 반영되며, 이 매니페스트만으로 오프라인 기능을 제공하지는 않습니다.
+
 ### 검증 범위
 
 - Node 테스트는 버전 증가, 배포 대상 제한, 누락된 키, 잘못된 인증 JSON 및 임시 파일 정리를 확인합니다.
