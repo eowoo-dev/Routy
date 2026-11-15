@@ -47,3 +47,4 @@ jobs:
           pnpm --filter @routy/web test:pairing
           pnpm --filter @routy/web test:mobile-auth
           pnpm --filter @routy/web test:account-deletion
+          pnpm --filter @routy/web test:navigation
