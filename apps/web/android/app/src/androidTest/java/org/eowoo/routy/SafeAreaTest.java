@@ -48,6 +48,7 @@ public class SafeAreaTest {
         JSONObject data = new JSONObject((String)new JSONTokener(js(scenario, script)).nextValue());
         scenario.onActivity(a -> {
             try {
+                assertTrue("Native action bar must not cover the web header", a.getSupportActionBar()==null || !a.getSupportActionBar().isShowing());
                 android.webkit.WebView web = a.getBridge().getWebView();
                 int[] location = new int[2]; web.getLocationOnScreen(location);
                 Rect bounds = a.getWindowManager().getCurrentWindowMetrics().getBounds();
