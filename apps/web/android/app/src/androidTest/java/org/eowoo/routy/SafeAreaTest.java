@@ -5,8 +5,8 @@ import android.content.pm.ActivityInfo;
 import android.graphics.Bitmap;
 import android.graphics.Rect;
 import android.os.SystemClock;
-import android.view.inputmethod.InputMethodManager;
-import android.content.Context;
+import android.view.MotionEvent;
+import android.view.InputDevice;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
@@ -86,9 +86,27 @@ public class SafeAreaTest {
             waitFor(scenario,"innerHeight>innerWidth");
             js(scenario,"document.querySelector('.header button').click()");
             waitFor(scenario,"document.querySelector('input[name=email]')");
-            js(scenario,"document.querySelector('input[name=email]').focus()");
-            scenario.onActivity(a->{a.getBridge().getWebView().requestFocus();((InputMethodManager)a.getSystemService(Context.INPUT_METHOD_SERVICE)).showSoftInput(a.getBridge().getWebView(),InputMethodManager.SHOW_IMPLICIT);});
-            SystemClock.sleep(1500);
+            // WebView does not reliably show IME for programmatic DOM focus. Tap like a user.
+            js(scenario,"document.querySelector('input[name=email]').scrollIntoView({block:'center'})");
+            SystemClock.sleep(500);
+            JSONObject input=new JSONObject((String)new JSONTokener(js(scenario,"JSON.stringify((()=>{const r=document.querySelector('input[name=email]').getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2,width:innerWidth}})())")).nextValue());
+            AtomicReference<float[]> point=new AtomicReference<>();
+            scenario.onActivity(a->{try{int[] xy=new int[2];a.getBridge().getWebView().getLocationOnScreen(xy);double scale=a.getBridge().getWebView().getWidth()/input.getDouble("width");point.set(new float[]{(float)(xy[0]+input.getDouble("x")*scale),(float)(xy[1]+input.getDouble("y")*scale)});}catch(Exception e){throw new RuntimeException(e);}});
+            long now=SystemClock.uptimeMillis();
+            for(int action:new int[]{MotionEvent.ACTION_DOWN,MotionEvent.ACTION_UP}) {
+                MotionEvent event=MotionEvent.obtain(now,SystemClock.uptimeMillis(),action,point.get()[0],point.get()[1],0);
+                event.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+                InstrumentationRegistry.getInstrumentation().sendPointerSync(event);event.recycle();
+                SystemClock.sleep(100);
+            }
+            long keyboardDeadline=SystemClock.elapsedRealtime()+10000;
+            AtomicReference<Boolean> keyboardOpen=new AtomicReference<>(false);
+            while(SystemClock.elapsedRealtime()<keyboardDeadline) {
+                scenario.onActivity(a->{WindowInsetsCompat insets=ViewCompat.getRootWindowInsets(a.getWindow().getDecorView());keyboardOpen.set(insets!=null&&insets.isVisible(WindowInsetsCompat.Type.ime()));});
+                if(keyboardOpen.get()) break;
+                SystemClock.sleep(250);
+            }
+            SystemClock.sleep(500);
             check(scenario,"keyboard",true);
         }
     }

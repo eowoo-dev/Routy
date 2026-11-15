@@ -231,7 +231,11 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent ios/build/device/Build/Products/Release-iphoneos/App.app ios/build/artifacts/routy-ios-device-unsigned.zip
       - name: Capture iPhone and iPad native safe areas
         if: matrix.platform == 'ios'
-        run: python3 infra/mobile/ios-safe-area-smoke.py
+        timeout-minutes: 12
+        run: |
+          python3 -m venv "$RUNNER_TEMP/routy-safe-area-tools"
+          "$RUNNER_TEMP/routy-safe-area-tools/bin/pip" install Pillow==13.0.0
+          "$RUNNER_TEMP/routy-safe-area-tools/bin/python" infra/mobile/ios-safe-area-smoke.py
       - uses: actions/upload-artifact@v7
         if: always()
         with:
