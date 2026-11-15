@@ -35,7 +35,7 @@ services:
     init: true
     restart: unless-stopped
     ports:
-      - "127.0.0.1:${WEB_PORT:-3000}:3000"
+      - "127.0.0.1:${WEB_PORT:-43871}:3000"
     environment:
       ROUTY_PUBLIC_WEB_ORIGIN: ${ROUTY_PUBLIC_WEB_ORIGIN:?Set the public HTTPS web origin}
       NODE_ENV: production

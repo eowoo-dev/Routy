@@ -52,7 +52,9 @@ docker compose --env-file .env.prod -f compose.prod.yaml up -d --build
 
 운영 설정은 소스를 마운트하지 않고 Next.js standalone 결과를 비관리자 계정으로 실행합니다. PostgreSQL 포트는 호스트에 공개하지 않고, 웹 포트는 localhost에만 바인딩합니다. 실제 외부 서비스 시 HTTPS 역방향 프록시·도메인·인증·CORS 정책은 배포 환경에 맞게 추가해야 합니다.
 
-개발과 운영은 Compose 프로젝트 이름과 DB 볼륨이 분리되어 있습니다. 동시에 실행할 때는 운영의 `WEB_PORT`를 다른 값으로 설정합니다.
+개발과 운영은 Compose 프로젝트 이름과 DB 볼륨이 분리되어 있습니다. 운영의 기본 호스트 포트는 기존 Tuti 서버와 충돌할 가능성을 줄이도록 선택한 `43871`이며, 컨테이너 내부 포트는 `3000`입니다. 개발 기본 포트는 `3000`을 유지합니다. NAS에서 `43871`을 이미 사용 중이면 `.env.prod`의 `WEB_PORT`를 다른 빈 포트로 변경합니다. 기존 `.env.prod`가 있다면 예제 파일 변경이 자동 반영되지 않으므로 `WEB_PORT=43871`로 직접 수정합니다.
+
+Cloudflare Tunnel이 NAS 호스트에서 실행되거나 host 네트워크를 사용하면 원본 서비스 주소는 `http://127.0.0.1:43871`입니다. Tunnel이 별도 bridge 네트워크의 Docker 컨테이너라면 `localhost`로 NAS의 포트에 접근할 수 없으므로, 공통 Docker 네트워크와 루티 전용 서비스 별칭을 별도로 구성해야 합니다.
 
 ## Capacitor 앱 빌드
 
