@@ -6,7 +6,7 @@ info:
     name: EoWoo
     url: https://eowoo.org
 servers:
-  - url: https://eowoo.org
+  - url: https://routy.eowoo.org
     description: EoWoo production API
   - url: http://localhost:3000
     description: Local development API

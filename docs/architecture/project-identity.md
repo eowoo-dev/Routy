@@ -3,11 +3,13 @@
 - 개발 팀 한글명: **어쩌다우리**
 - 개발 팀 영문명: **EoWoo**
 - 공식 도메인: **eowoo.org**
-- 운영 웹 주소와 차량 API origin: `https://eowoo.org`
-- 모바일 앱 API 주소: `https://eowoo.org/api`
+- 운영 웹 주소와 차량 API origin: `https://routy.eowoo.org`
+- 모바일 앱 API 주소: `https://routy.eowoo.org/api`
 - 서비스명: **루티 / Routy**
 
 공통 원본은 `packages/contracts/identity.json`입니다. 웹 메타데이터와 하단 팀 표시, Capacitor 앱 ID, 차량 앱 ID와 팀 문자열 및 release 기본 주소가 이 파일을 사용합니다. OpenAPI 연락처, 패키지 메타데이터와 운영 환경 예제도 같은 팀과 주소를 표기합니다. 제삼자 SDK와 글꼴 라이선스, 참고한 외부 저장소 주소는 실제 출처를 유지합니다.
+
+`team.website`는 팀 홈페이지 `https://eowoo.org`, `service.webOrigin`은 루티 서비스 `https://routy.eowoo.org`입니다. 웹 메타데이터의 기준 주소와 차량 release 기본 API는 서비스 주소를 사용합니다. 스마트폰 Android와 iOS의 GitHub Actions 빌드는 `https://routy.eowoo.org/api`를 정적 웹 자원에 포함합니다. 앱 패키지명은 변경하지 않습니다.
 
 ## 패키지
 
@@ -25,13 +27,15 @@ Kotlin 소스는 `src/<변형>/kotlin/org/eowoo/routy/`에 있습니다. 실행 
 
 개발 Compose와 debug APK는 기존 loopback 주소를 사용합니다. 서버가 배포되지 않은 도메인으로 개발 요청을 전환하지 않습니다. 운영 설정 예제는 루트 `.env.prod.example`, 모바일 앱 빌드 예제는 `apps/web/.env.production.example`입니다.
 
-독립 release 빌드의 기본 API 주소는 `https://eowoo.org`이며 `-ProutyApiBaseUrl`로 재정의할 수 있습니다. 개발 Compose는 debug 개발 주소를 명시적으로 전달하므로 그 환경에서 release를 빌드할 때는 운영 origin을 전달해야 합니다. 운영 도메인 설정은 DNS, 인증서 발급이나 실제 서버 배포를 수행하지 않습니다.
+독립 release 빌드의 기본 API 주소는 `https://routy.eowoo.org`이며 `-ProutyApiBaseUrl`로 재정의할 수 있습니다. 개발 Compose는 debug 개발 주소를 명시적으로 전달하므로 그 환경에서 release를 빌드할 때는 운영 origin을 전달해야 합니다. 운영 도메인 설정은 DNS, 인증서 발급이나 실제 서버 배포를 수행하지 않습니다.
 
 ## 기존 설치와 기록
 
 이번 패키지 변경은 Android에서 별도 앱으로 취급됩니다. 기존 설치를 덮어쓰거나 제거하지 않으며, 기존 앱의 내부 파일과 설치 인증 키가 새 앱으로 자동 이동하지 않습니다. 새 앱은 새 설치로 등록되므로 기존 계정 연결과 서버 기록을 계속 사용하려면 별도의 데이터 이전 절차가 필요합니다. 현재 작업은 기존 설치, 주행 원본과 서버 DB를 삭제하거나 계정 연결을 변경하지 않습니다.
 
-## 변경 검증 (2026-11-15)
+## 팀 식별자 변경 당시 검증 (2026-11-15)
+
+아래는 운영 주소를 하위 도메인으로 변경하기 전의 검증 기록입니다. 현재 서비스 주소는 `https://routy.eowoo.org`이며, 팀 홈페이지는 `https://eowoo.org`로 유지합니다.
 
 - 새 namespace에서 엔진 167개와 차량 앱 40개, 총 Kotlin 단위 테스트 207개 통과. Python 실행 도구 회귀 테스트 70개와 웹 기록/API/복습 검증 18개 통과.
 - 웹 타입 검사와 ESLint 통과. 실제 개발 서버가 반환한 HTML에서 팀 한글명과 영문명, 홈페이지 링크 및 author/publisher 메타데이터를 확인했습니다.

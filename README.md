@@ -2,6 +2,8 @@
 
 개발 팀: **어쩌다우리 (EoWoo)** · 공식 도메인: **eowoo.org**
 
+운영 서비스: **https://routy.eowoo.org**
+
 차량에서 연습하고 스마트폰에서 계획·복습하는 운전 학습 서비스입니다.
 
 팀 표기와 패키지 정책은 [프로젝트 식별자 안내](docs/architecture/project-identity.md)를 참고하세요.

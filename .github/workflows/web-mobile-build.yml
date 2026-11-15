@@ -31,7 +31,7 @@ concurrency:
 
 env:
   NEXT_TELEMETRY_DISABLED: '1'
-  NEXT_PUBLIC_API_BASE_URL: https://eowoo.org/api
+  NEXT_PUBLIC_API_BASE_URL: https://routy.eowoo.org/api
 
 jobs:
   web:
@@ -40,7 +40,7 @@ jobs:
     timeout-minutes: 20
     env:
       DATABASE_URL: postgresql://routy:build_only@127.0.0.1:5432/routy_build
-      ROUTY_PUBLIC_WEB_ORIGIN: https://eowoo.org
+      ROUTY_PUBLIC_WEB_ORIGIN: https://routy.eowoo.org
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7

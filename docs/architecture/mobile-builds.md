@@ -9,7 +9,7 @@
 | Android APK and AAB | Ubuntu 24.04, JDK 21 | debug APK, unsigned release APK와 AAB |
 | iOS simulator and unsigned device | macOS 26의 Xcode | simulator 앱과 서명하지 않은 기기용 앱 ZIP |
 
-pnpm은 11.2.2, Capacitor core/CLI/Android/iOS는 8.6.0으로 고정하고 lockfile 설치를 사용합니다. API 주소는 `https://eowoo.org/api`, 앱 ID는 `org.eowoo.routy`입니다. 차량용 `apps/pleos`와 스마트폰용 `apps/web/android`는 별도 앱입니다.
+pnpm은 11.2.2, Capacitor core/CLI/Android/iOS는 8.6.0으로 고정하고 lockfile 설치를 사용합니다. API 주소는 `https://routy.eowoo.org/api`, 앱 ID는 `org.eowoo.routy`입니다. 차량용 `apps/pleos`와 스마트폰용 `apps/web/android`는 별도 앱입니다.
 
 ## 생성물과 소스
 
@@ -21,12 +21,12 @@ Actions는 정적 웹을 한 번 빌드해 Android와 iOS 작업에 전달합니
 
 Android debug APK는 테스트 설치용입니다. release APK와 AAB 및 iOS 기기용 ZIP은 서명하지 않은 빌드 검증 결과이며 스토어 제출용 서명 결과가 아닙니다. iOS 검증에는 Apple 계정이나 개인 Mac이 필요하지 않습니다. 실제 기기 배포와 App Store 제출에는 별도의 인증서와 프로비저닝 구성이 필요합니다.
 
-빌드 성공은 운영 서버 배포나 모바일 로그인 완성을 의미하지 않습니다. eowoo.org의 서버와 HTTPS 배포, Capacitor와 서버 사이의 교차 출처 인증 연결은 별도로 검증해야 합니다.
+빌드 성공은 운영 서버 배포나 모바일 로그인 완성을 의미하지 않습니다. routy.eowoo.org의 서버와 HTTPS 배포, Capacitor와 서버 사이의 교차 출처 인증 연결은 별도로 검증해야 합니다.
 
 ## 로컬 Android 빌드
 
 ```powershell
-docker compose -f compose.dev.yaml exec -T -e NEXT_PUBLIC_API_BASE_URL=https://eowoo.org/api web pnpm --filter @routy/web build:app
+docker compose -f compose.dev.yaml exec -T -e NEXT_PUBLIC_API_BASE_URL=https://routy.eowoo.org/api web pnpm --filter @routy/web build:app
 docker compose -f compose.dev.yaml exec -T web pnpm --filter @routy/web exec cap sync android
 ```
 

@@ -56,13 +56,13 @@ APK는 `apps/pleos/app/build/outputs/apk/debug/app-debug.apk`에 생성됩니다
 서버 주소는 Gradle의 `routyApiBaseUrl` 또는 Compose의 `ROUTY_API_BASE_URL`로 지정합니다. **차량 앱에는 `/api`를 제외한 origin을 지정**합니다. `/api/health` 등 경로는 생성된 클라이언트가 관리합니다. 스마트폰 앱의 `NEXT_PUBLIC_API_BASE_URL`은 `/api`를 포함하므로 구분해야 합니다.
 
 ```powershell
-docker compose -f compose.dev.yaml run --rm --no-deps -e ROUTY_API_BASE_URL=https://eowoo.org pleos :app:assembleDebug
+docker compose -f compose.dev.yaml run --rm --no-deps -e ROUTY_API_BASE_URL=https://routy.eowoo.org pleos :app:assembleDebug
 ```
 
-debug만 `127.0.0.1`에 대한 HTTP 접속을 허용하며, release는 HTTPS만 허용합니다. debug 기본 주소는 에뮬레이터 개발용이고, 독립 release 빌드의 기본 주소는 `https://eowoo.org`입니다. 명시적으로 재정의한 release 주소도 HTTPS origin 검사를 통과해야 합니다. 도메인의 실제 접속에는 별도의 서버 배포와 DNS 및 인증서 설정이 필요합니다.
+debug만 `127.0.0.1`에 대한 HTTP 접속을 허용하며, release는 HTTPS만 허용합니다. debug 기본 주소는 에뮬레이터 개발용이고, 독립 release 빌드의 기본 주소는 `https://routy.eowoo.org`입니다. 명시적으로 재정의한 release 주소도 HTTPS origin 검사를 통과해야 합니다. 도메인의 실제 접속에는 별도의 서버 배포와 DNS 및 인증서 설정이 필요합니다.
 
 ```powershell
-# .env.prod의 서버 설정과 함께 ROUTY_API_BASE_URL=https://eowoo.org 설정
+# .env.prod의 서버 설정과 함께 ROUTY_API_BASE_URL=https://routy.eowoo.org 설정
 docker compose --env-file .env.prod -f compose.prod.yaml build pleos
 docker compose --env-file .env.prod -f compose.prod.yaml run --rm --no-deps pleos :app:assembleRelease
 ```

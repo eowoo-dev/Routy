@@ -7,7 +7,7 @@ import org.junit.Test
 import kotlin.test.assertEquals
 class PairingQrTest {
  @Test fun encodedPublicLinkCanBeScannedWithoutAnyInstallationCredential(){
-  val uri="https://eowoo.org/?connect=ABCD2345"
+  val uri="https://routy.eowoo.org/?connect=ABCD2345"
   val matrix=PairingQr.matrix(uri)
   val pixels=IntArray(matrix.width*matrix.height){i->if(matrix[i%matrix.width,i/matrix.width])0xff000000.toInt() else 0xffffffff.toInt()}
   val scan=QRCodeReader().decode(BinaryBitmap(HybridBinarizer(RGBLuminanceSource(matrix.width,matrix.height,pixels))))

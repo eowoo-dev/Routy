@@ -10,9 +10,10 @@ plugins {
 group = "org.eowoo.routy"
 val identity = groovy.json.JsonSlurper().parse(rootProject.file("../../packages/contracts/identity.json")) as Map<*, *>
 val team = identity["team"] as Map<*, *>
+val service = identity["service"] as Map<*, *>
 val applicationIds = identity["applicationIds"] as Map<*, *>
 val vehiclePackage = applicationIds["vehicle"] as String
-val releaseApiOrigin = providers.gradleProperty("routyApiBaseUrl").orElse(team["website"] as String)
+val releaseApiOrigin = providers.gradleProperty("routyApiBaseUrl").orElse(service["webOrigin"] as String)
 val apiOrigin = providers.gradleProperty("routyApiBaseUrl").orElse("http://127.0.0.1:3000")
 fun quoted(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
@@ -54,7 +55,7 @@ val validateReleaseApi by tasks.registering {
         val url = URI(releaseApiOrigin.get())
         require(url.scheme == "https" && !url.host.isNullOrBlank() && url.userInfo == null
             && url.rawQuery == null && url.fragment == null && url.path in listOf("", "/")) {
-            "Release requires -ProutyApiBaseUrl=https://eowoo.org (origin without /api)."
+            "Release requires -ProutyApiBaseUrl=https://routy.eowoo.org (origin without /api)."
         }
     }
 }

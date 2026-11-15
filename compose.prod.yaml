@@ -8,7 +8,7 @@ services:
       dockerfile: infra/pleos/Dockerfile.build
     init: true
     environment:
-      ROUTY_API_BASE_URL: ${ROUTY_API_BASE_URL:-https://eowoo.org}
+      ROUTY_API_BASE_URL: ${ROUTY_API_BASE_URL:-https://routy.eowoo.org}
     volumes:
       - .:/workspace
       - pleos-gradle-cache:/root/.gradle

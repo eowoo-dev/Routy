@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   title: "Routy | 나에게 맞는 길, 나아지는 운전",
   description: "맞춤형 운전 연습과 주행 복습을 연결하는 루티",
   applicationName: "Routy",
-  metadataBase: new URL(identity.team.website),
+  metadataBase: new URL(identity.service.webOrigin),
   authors: [{ name: identity.team.nameEn, url: identity.team.website }],
   creator: identity.team.nameEn,
   publisher: identity.team.nameEn,
