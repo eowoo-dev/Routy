@@ -31,3 +31,16 @@ docker compose -f compose.dev.yaml exec -T web pnpm --filter @routy/web exec cap
 ```
 
 이후 JDK 21과 Android SDK가 있는 환경에서 `apps/web/android`의 Gradle wrapper로 `assembleDebug assembleRelease bundleRelease`를 실행합니다. Windows 호스트에 Android Studio를 설치할 필요는 없습니다. iOS 빌드는 Actions의 macOS 작업에서 검증합니다.
+
+## GitHub 검증 결과 (2026-11-15)
+
+소스 커밋 `d6ba2a1`의 [실제 Actions 실행](https://github.com/eowoo-dev/Routy/actions/runs/43687445893)에서 아래 네 작업이 모두 성공했습니다.
+
+- Next.js server: production standalone 빌드와 서버 압축 파일 생성.
+- Capacitor web assets: 서버 코드를 제외한 정적 빌드와 네이티브 작업에 전달할 자원 생성.
+- Android APK and AAB: debug APK, unsigned release APK 및 release AAB 생성.
+- iOS simulator and unsigned device: macOS 26의 Xcode 26.6(17F113)에서 simulator Debug와 기기 Release 빌드 성공. Apple 인증서 없이 CODE_SIGNING_ALLOWED=NO로 검증.
+
+Artifacts에는 `routy-web-standalone`, `routy-mobile-web`, `routy-android`, `routy-ios`, `routy-ios-build-logs`가 보존됐습니다. `routy-ios`에는 simulator 앱 ZIP과 서명하지 않은 기기 앱 ZIP이 들어 있으며 IPA나 App Store 배포 결과가 아닙니다.
+
+같은 소스의 [주행 기록 및 계정 연결 API 워크플로](https://github.com/eowoo-dev/Routy/actions/runs/43687445892)도 성공했습니다. 초기 소스와 전체 main 이력은 새 저장소로 전송했고, 연결 원격은 `https://github.com/eowoo-dev/Routy.git`입니다.
