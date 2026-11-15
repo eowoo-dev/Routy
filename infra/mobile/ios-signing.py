@@ -31,12 +31,56 @@ def validate_profile(profile, team, package, now=None):
     return uuid
 
 
-def command(*args):
+def command(*args, input_data=None):
     try:
-        return subprocess.run(args, check=True, capture_output=True).stdout
-    except subprocess.CalledProcessError:
+        return subprocess.run(args, input=input_data, check=True, capture_output=True).stdout
+    except subprocess.CalledProcessError as error:
         # Never include a command line containing a certificate password in logs.
-        raise RuntimeError("Apple signing command failed; check certificate, password and profile") from None
+        operation = " ".join(args[:2])
+        detail = (error.stderr or b"").decode(errors="replace")
+        for name, value in os.environ.items():
+            if value and any(part in name for part in ["PASSWORD", "PRIVATE_KEY", "CERTIFICATE_BASE64", "PROFILE_BASE64"]):
+                detail = detail.replace(value, "[redacted]")
+        detail = re.sub(r"-----BEGIN.*?-----END[^\n]+-----", "[redacted PEM]", detail, flags=re.S)
+        detail = detail[:1200]
+        raise RuntimeError(f"Apple signing failed at {operation} (exit {error.returncode}): {detail.strip()}") from None
+
+
+def normalize_certificate(source, destination):
+    # Apple Keychain does not reliably import OpenSSL 3's default PBES2 containers.
+    # Keep the original secret unchanged. Plaintext key material exists only in pipes.
+    read_args = ["openssl", "pkcs12", "-in", str(source), "-nodes", "-passin", "env:IOS_CERTIFICATE_PASSWORD"]
+    try:
+        material = command(*read_args)
+    except RuntimeError:
+        if b"OpenSSL 3" not in command("openssl", "version"):
+            raise
+        material = command(*read_args, "-legacy")
+    descriptor = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    os.close(descriptor)
+    public_certificate = destination.with_suffix(".certificate.pem")
+    encrypted_key = destination.with_suffix(".encrypted-key.pem")
+    try:
+        certificate = b"\n".join(re.findall(b"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----", material, re.S)) + b"\n"
+        encrypted = command("openssl", "pkey", "-aes-256-cbc", "-passout", "env:IOS_CERTIFICATE_PASSWORD", input_data=material)
+        if b"-----BEGIN ENCRYPTED PRIVATE KEY-----" not in encrypted:
+            raise ValueError("Encrypted certificate conversion failed")
+        descriptor = os.open(public_certificate, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, "wb") as file:
+            file.write(certificate)
+        descriptor = os.open(encrypted_key, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, "wb") as file:
+            file.write(encrypted)
+        command("openssl", "pkcs12", "-export", "-out", str(destination),
+                "-in", str(public_certificate), "-inkey", str(encrypted_key), "-passin", "env:IOS_CERTIFICATE_PASSWORD",
+                "-keypbe", "PBE-SHA1-3DES", "-certpbe", "PBE-SHA1-3DES", "-macalg", "sha1",
+                "-passout", "env:IOS_CERTIFICATE_PASSWORD", input_data=material)
+    except Exception:
+        destination.unlink(missing_ok=True)
+        raise
+    finally:
+        public_certificate.unlink(missing_ok=True)
+        encrypted_key.unlink(missing_ok=True)
 
 
 def install():
@@ -46,12 +90,14 @@ def install():
     package = identity["applicationIds"]["mobile"]
     team = os.environ["APPLE_TEAM_ID"]
     uuid = validate_profile(profile, team, package)
+    compatible_certificate = directory / "distribution-keychain.p12"
+    normalize_certificate(os.environ["IOS_CERTIFICATE_PATH"], compatible_certificate)
     keychain = directory / "signing.keychain-db"
     password = os.urandom(32).hex()
     command("security", "create-keychain", "-p", password, str(keychain))
     command("security", "set-keychain-settings", "-lut", "21600", str(keychain))
     command("security", "unlock-keychain", "-p", password, str(keychain))
-    command("security", "import", os.environ["IOS_CERTIFICATE_PATH"], "-P", os.environ["IOS_CERTIFICATE_PASSWORD"], "-k", str(keychain), "-T", "/usr/bin/codesign", "-T", "/usr/bin/security")
+    command("security", "import", str(compatible_certificate), "-P", os.environ["IOS_CERTIFICATE_PASSWORD"], "-k", str(keychain), "-T", "/usr/bin/codesign", "-T", "/usr/bin/security")
     command("security", "set-key-partition-list", "-S", "apple-tool:,apple:", "-k", password, str(keychain))
     found = command("security", "find-identity", "-v", "-p", "codesigning", str(keychain)).decode()
     if not any(hashlib.sha1(cert).hexdigest().upper() in found for cert in profile.get("DeveloperCertificates", [])):
