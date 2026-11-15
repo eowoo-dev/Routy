@@ -163,7 +163,7 @@ jobs:
       - name: Build Android
         if: matrix.platform == 'android'
         working-directory: apps/web/android
-        run: sh ./gradlew --no-daemon --console=plain assembleDebug assembleRelease bundleRelease assembleDebugAndroidTest
+        run: sh ./gradlew --no-daemon --console=plain assembleDebug assembleRelease bundleRelease :app:assembleDebugAndroidTest
       - name: Enable emulator acceleration
         if: matrix.platform == 'android'
         run: |
