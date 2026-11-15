@@ -21,7 +21,7 @@ Actions는 정적 웹을 한 번 빌드해 Android와 iOS 작업에 전달합니
 
 Android debug APK는 테스트 설치용입니다. release APK와 AAB 및 iOS 기기용 ZIP은 서명하지 않은 빌드 검증 결과이며 스토어 제출용 서명 결과가 아닙니다. iOS 검증에는 Apple 계정이나 개인 Mac이 필요하지 않습니다. 실제 기기 배포와 App Store 제출에는 별도의 인증서와 프로비저닝 구성이 필요합니다.
 
-빌드 성공은 운영 서버 배포나 모바일 로그인 완성을 의미하지 않습니다. routy.eowoo.org의 서버와 HTTPS 배포, Capacitor와 서버 사이의 교차 출처 인증 연결은 별도로 검증해야 합니다.
+Capacitor 앱의 교차 출처 로그인과 차량 연결은 [스마트폰 인증 연결](mobile-auth.md)에 따라 구현되어 있습니다. 서버와 앱을 함께 업데이트해야 하며, 빌드 성공만으로 NAS 배포나 실제 기기에서의 실행 검증을 대신하지는 않습니다.
 
 ## 로컬 Android 빌드
 

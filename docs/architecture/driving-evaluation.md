@@ -185,4 +185,4 @@ Prisma의 VehicleInstallation은 인증키 SHA-256만 저장하고 DrivingRecord
 
 연결 뒤 `/api/account/vehicle`과 `/api/account/driving-records`는 계정 세션으로 소유 차량과 기록만 반환한다. 다른 계정의 기록은 404이며 차량 설치 인증키를 웹으로 복사하지 않는다. 해당 설치의 기존 완료 기록도 연결된 계정에 표시된다. 원시 설치 인증을 사용하는 기존 업로드 API는 변경하지 않는다.
 
-`ROUTY_PUBLIC_WEB_ORIGIN`은 QR에 넣을 경로 없는 웹 주소다. 로컬 기본값 `http://localhost:3000`은 같은 노트북에서 코드로 연결을 검증하기 위한 값이다. 실제 스마트폰에서 QR을 열려면 그 기기에서 도달 가능한 HTTPS origin으로 설정하고 해당 서버를 제공해야 한다. 현재 개발 Compose의 호스트 바인딩은 loopback을 유지한다. 외부 배포는 별도 작업이며 정적 Capacitor 네이티브 앱의 교차 출처 로그인 브리지는 아직 구성하지 않는다. 이번 사용자 웹은 스마트폰·노트북 브라우저에서 같은 출처 세션으로 동작한다.
+`ROUTY_PUBLIC_WEB_ORIGIN`은 QR에 넣을 경로 없는 웹 주소다. 로컬 기본값 `http://localhost:3000`은 같은 노트북에서 코드로 연결을 검증하기 위한 값이다. 실제 스마트폰에서 QR을 열려면 그 기기에서 도달 가능한 HTTPS origin으로 설정하고 해당 서버를 제공해야 한다. 현재 개발 Compose의 호스트 바인딩은 loopback을 유지한다. 외부 배포는 별도 작업이다. 브라우저는 같은 출처 쿠키 세션을 사용하며, 정적 Capacitor 앱은 허용된 앱 출처와 보안 저장소의 Bearer 세션을 사용한다. 상세 내용은 [스마트폰 인증 연결](mobile-auth.md)을 참고한다.

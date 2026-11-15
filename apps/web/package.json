@@ -19,9 +19,11 @@
     "ios:sync": "pnpm build:app && cap sync ios",
     "db:deploy": "prisma migrate deploy",
     "test:records": "tsx --test test/driving-records*.test.ts",
-    "test:pairing": "tsx --test test/account-pairing.api.test.ts"
+    "test:pairing": "tsx --test test/account-pairing.api.test.ts",
+    "test:mobile-auth": "tsx --test test/account-client.test.ts test/account-mobile.api.test.ts"
   },
   "dependencies": {
+    "@aparajita/capacitor-secure-storage": "8.0.1",
     "@aws-sdk/client-s3": "^3.1095.0",
     "@capacitor/android": "8.6.0",
     "@capacitor/app": "8.1.1",

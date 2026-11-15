@@ -6,6 +6,8 @@ const config: CapacitorConfig = {
   appName: "Routy",
   webDir: "out",
   server: {
+    hostname: "localhost",
+    iosScheme: "capacitor",
     androidScheme: "https",
   },
 };

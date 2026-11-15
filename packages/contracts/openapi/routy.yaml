@@ -80,7 +80,7 @@ paths:
   /api/account/driving-records/{sessionId}/archive:
     get:
       operationId: downloadAccountDrivingRecordArchive
-      security: [{accountCookie: []}]
+      security: [{accountCookie: []}, {accountBearer: []}]
       parameters:
         - {name: sessionId, in: path, required: true, schema: {type: string, format: uuid}}
       responses:
@@ -116,7 +116,8 @@ paths:
   /api/auth/login:
     post:
       operationId: loginAccount
-      summary: Sign in on the web
+      summary: Sign in with browser cookie or native app bearer session
+      description: Native origins capacitor://localhost and https://localhost receive accessToken; other allowed browser requests receive an HttpOnly cookie only.
       requestBody:
         required: true
         content:
@@ -138,7 +139,7 @@ paths:
   /api/auth/session:
     get:
       operationId: getAccountSession
-      summary: Read current web session
+      summary: Read current browser or native app session
       responses:
         '200':
           description: Success
@@ -155,8 +156,8 @@ paths:
   /api/auth/logout:
     post:
       operationId: logoutAccount
-      summary: Revoke current web session
-      security: [{accountCookie: []}]
+      summary: Revoke current browser or native app session
+      security: [{accountCookie: []}, {accountBearer: []}]
       responses:
         '200':
           description: Success
@@ -210,7 +211,7 @@ paths:
     get:
       operationId: getAccountVehicle
       summary: Read the account linked vehicle
-      security: [{accountCookie: []}]
+      security: [{accountCookie: []}, {accountBearer: []}]
       responses:
         '200':
           description: Success
@@ -228,7 +229,7 @@ paths:
     post:
       operationId: previewVehiclePairing
       summary: Preview before confirming the connection
-      security: [{accountCookie: []}]
+      security: [{accountCookie: []}, {accountBearer: []}]
       requestBody:
         required: true
         content:
@@ -251,7 +252,7 @@ paths:
     post:
       operationId: claimVehiclePairing
       summary: Confirm one account and one vehicle connection
-      security: [{accountCookie: []}]
+      security: [{accountCookie: []}, {accountBearer: []}]
       requestBody:
         required: true
         content:
@@ -274,7 +275,7 @@ paths:
     get:
       operationId: listAccountDrivingRecords
       summary: Read records owned by this account
-      security: [{accountCookie: []}]
+      security: [{accountCookie: []}, {accountBearer: []}]
       parameters:
         - {in: query, name: limit, schema: {type: integer, minimum: 1, maximum: 50}}
         - {in: query, name: cursor, schema: {type: string, format: uuid}}
@@ -294,7 +295,7 @@ paths:
   /api/account/driving-records/{sessionId}:
     get:
       operationId: getAccountDrivingRecord
-      security: [{accountCookie: []}]
+      security: [{accountCookie: []}, {accountBearer: []}]
       parameters:
         - {in: path, name: sessionId, required: true, schema: {type: string, format: uuid}}
       responses:
@@ -441,6 +442,10 @@ components:
       in: cookie
       name: routy_session
       description: HttpOnly SameSite=Lax session cookie; Secure on HTTPS production
+    accountBearer:
+      type: http
+      scheme: bearer
+      description: 256-bit account session token for allowed native origins only; independent from vehicle installation credentials
     installationBearer:
       type: http
       scheme: bearer
@@ -466,6 +471,14 @@ components:
         user:
           allOf: [{$ref: '#/components/schemas/AccountProfile'}]
           nullable: true
+        accessToken:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+          description: Returned only by successful register or login from an allowed native origin; never returned by session reads
+        expiresAt:
+          type: string
+          format: date-time
+          description: Absolute session expiry returned with native accessToken
     AccountSignupInput:
       type: object
       required: [email, password, displayName]

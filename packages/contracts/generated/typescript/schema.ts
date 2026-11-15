@@ -96,7 +96,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Sign in on the web */
+        /**
+         * Sign in with browser cookie or native app bearer session
+         * @description Native origins capacitor://localhost and https://localhost receive accessToken; other allowed browser requests receive an HttpOnly cookie only.
+         */
         post: operations["loginAccount"];
         delete?: never;
         options?: never;
@@ -111,7 +114,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read current web session */
+        /** Read current browser or native app session */
         get: operations["getAccountSession"];
         put?: never;
         post?: never;
@@ -130,7 +133,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Revoke current web session */
+        /** Revoke current browser or native app session */
         post: operations["logoutAccount"];
         delete?: never;
         options?: never;
@@ -374,6 +377,13 @@ export interface components {
         };
         AccountSessionResponse: {
             user: components["schemas"]["AccountProfile"] | null;
+            /** @description Returned only by successful register or login from an allowed native origin; never returned by session reads */
+            accessToken?: string;
+            /**
+             * Format: date-time
+             * @description Absolute session expiry returned with native accessToken
+             */
+            expiresAt?: string;
         };
         AccountSignupInput: {
             /** Format: email */

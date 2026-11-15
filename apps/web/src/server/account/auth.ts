@@ -3,14 +3,13 @@ import { randomBytes, scrypt as cryptoScrypt, timingSafeEqual } from "node:crypt
 import { promisify } from "node:util";
 import { db } from "@/server/db";
 import { ApiProblem, digest, object } from "@/server/driving-records/validation";
+import { allowedAccountOrigin, isMobileRequest } from "./origins";
 const scrypt=promisify(cryptoScrypt);
 const COOKIE="routy_session";
 export const SESSION_MS=30*24*60*60*1000;
 export function publicAccount(user:{id:string;email:string;displayName:string}) {return {id:user.id,email:user.email,displayName:user.displayName};}
 export function sameOrigin(request:Request) {
-  const origin=request.headers.get("origin");
-  const expected=new URL(process.env.ROUTY_PUBLIC_WEB_ORIGIN??request.url).origin;
-  if((origin && origin!==expected) || request.headers.get("sec-fetch-site")==="cross-site")throw new ApiProblem(403,"ORIGIN_DENIED","이 화면에서 다시 시도해주세요.");
+  if(!allowedAccountOrigin(request))throw new ApiProblem(403,"ORIGIN_DENIED","이 화면에서 다시 시도해주세요.");
 }
 export async function limited(bucket:string,identity:string,max:number,windowMs=15*60*1000) {
   await db.requestLimit.deleteMany({where:{expiresAt:{lt:new Date(Date.now()-86_400_000)}}});
@@ -47,8 +46,21 @@ export function setSession(response:Response,token:string|null) {
   return response;
 }
 export function cookieToken(request:Request) {return /(?:^|;\s*)routy_session=([a-f0-9]{64})(?:;|$)/.exec(request.headers.get("cookie")??"")?.[1];}
+export function sessionToken(request:Request) {
+  // Native origins must explicitly carry a token; browser cookies cannot authorize them.
+  return isMobileRequest(request)
+    ? /^Bearer ([a-f0-9]{64})$/.exec(request.headers.get("authorization")??"")?.[1]
+    : cookieToken(request);
+}
+export function sessionResponse(request:Request,user:Parameters<typeof publicAccount>[0],token:string,status=200) {
+  const body={user:publicAccount(user)};
+  const headers={"Cache-Control":"no-store"};
+  return isMobileRequest(request)
+    ? Response.json({...body,accessToken:token,expiresAt:new Date(Date.now()+SESSION_MS).toISOString()},{status,headers})
+    : setSession(Response.json(body,{status,headers}),token);
+}
 export async function currentAccount(request:Request) {
-  const token=cookieToken(request);if(!token)return null;
+  const token=sessionToken(request);if(!token)return null;
   const session=await db.accountSession.findUnique({where:{tokenHash:digest(token)},include:{account:true}});
   return session && session.expiresAt.getTime()>Date.now()?session.account:null;
 }
