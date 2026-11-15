@@ -26,8 +26,8 @@ android {
         applicationId = vehiclePackage
         minSdk = 28
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.1.1"
         resValue("string", "team_name", team["nameKo"] as String)
         resValue("string", "team_name_en", team["nameEn"] as String)
         resValue("string", "team_domain", team["domain"] as String)

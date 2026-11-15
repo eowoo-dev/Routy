@@ -45,7 +45,9 @@ jobs:
         run: sh ../gradlew --no-daemon --console=plain archiveMemoryTest
       - name: Generate and verify synthetic environment scenarios
         working-directory: .
-        run: docker run --rm --user "$(id -u):$(id -g)" -v "$GITHUB_WORKSPACE:/workspace" -w /workspace node:26.12.1-bookworm-slim node infra/virtual-console/scenarios/generate.mjs
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" -v "$GITHUB_WORKSPACE:/workspace" -w /workspace node:26.12.1-bookworm-slim node infra/virtual-console/scenarios/generate.mjs
+          docker run --rm --user "$(id -u):$(id -g)" -v "$GITHUB_WORKSPACE:/workspace" -w /workspace node:26.12.1-bookworm-slim node infra/virtual-console/scenarios/submission.mjs --check
       - name: Kotlin environment scenario expectations and replay
         run: sh ../gradlew --no-daemon --console=plain run --args='--environment-suite build/environment-scenarios.json --output build/reports/environment-scenarios.json'
       - name: Integration oracle regression tests

@@ -43,6 +43,7 @@ import java.net.URI
 fun RoutyHomeScreen(onDiagnostics:()->Unit,model:ConnectionViewModel=viewModel()) {
     val state by model.state.collectAsStateWithLifecycle()
     var connectionPage by rememberSaveable {mutableStateOf(false)}
+    var demoPage by rememberSaveable {mutableStateOf(false)}
     val owner=LocalLifecycleOwner.current
     DisposableEffect(owner,model) {
         val observer=LifecycleEventObserver {_,event->when(event){Lifecycle.Event.ON_START->model.foreground(true);Lifecycle.Event.ON_STOP->model.foreground(false);else->Unit}}
@@ -67,8 +68,9 @@ fun RoutyHomeScreen(onDiagnostics:()->Unit,model:ConnectionViewModel=viewModel()
                             RoadIcon(40.dp);Text("routy",fontSize=32.sp,fontWeight=FontWeight.Bold,color=MaterialTheme.colorScheme.primary)
                         }
                         Spacer(Modifier.height(38.dp))
-                        RailButton("내 연습",!connectionPage){connectionPage=false}
-                        RailButton("계정 연결",connectionPage){connectionPage=true}
+                        RailButton("내 연습",!connectionPage && !demoPage){connectionPage=false;demoPage=false}
+                        RailButton("계정 연결",connectionPage){connectionPage=true;demoPage=false}
+                        RailButton("합성 시연",demoPage){connectionPage=false;demoPage=true}
                         Spacer(Modifier.weight(1f))
                         if(BuildConfig.DEBUG)TextButton(onClick=onDiagnostics,modifier=Modifier.heightIn(min=64.dp)){Text("개발 도구",fontSize=18.sp)}
                         Column(verticalArrangement=Arrangement.spacedBy(4.dp)) {
@@ -79,7 +81,7 @@ fun RoutyHomeScreen(onDiagnostics:()->Unit,model:ConnectionViewModel=viewModel()
                     }
                     Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()).padding(if(compact)28.dp else 48.dp),verticalArrangement=Arrangement.spacedBy(30.dp)) {
                         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
-                            Text(if(connectionPage)"계정 연결" else "내 연습",fontSize=28.sp,fontWeight=FontWeight.SemiBold)
+                            Text(if(demoPage)"합성 데이터 시연" else if(connectionPage)"계정 연결" else "내 연습",fontSize=28.sp,fontWeight=FontWeight.SemiBold)
                             Surface(color=MaterialTheme.colorScheme.surfaceVariant,shape=RoundedCornerShape(50)) {
                                 Row(Modifier.padding(horizontal=20.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
                                     Canvas(Modifier.size(8.dp)){drawCircle(Color(0xff175f55))}
@@ -93,7 +95,8 @@ fun RoutyHomeScreen(onDiagnostics:()->Unit,model:ConnectionViewModel=viewModel()
                                 TextButton(onClick=model::refresh){Text("다시 확인",fontSize=20.sp)}
                             }
                         }
-                        if(connectionPage)ConnectionPage(state,compact,model::issue) else HomePage(state,compact){connectionPage=true}
+                        if(demoPage)org.eowoo.routy.pleos.feature.demo.SubmissionDemoPanel()
+                        else if(connectionPage)ConnectionPage(state,compact,model::issue) else HomePage(state,compact){connectionPage=true}
                         Spacer(Modifier.height(12.dp))
                     }
                 }

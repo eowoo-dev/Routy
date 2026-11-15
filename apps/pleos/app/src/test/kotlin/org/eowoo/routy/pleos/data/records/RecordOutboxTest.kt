@@ -12,6 +12,24 @@ import kotlin.test.*
 class RecordOutboxTest {
     @get:Rule val folder=TemporaryFolder()
     private fun report()=DrivingEvaluationEngine().evaluate(ExampleDrive.session())
+    @Test fun allSubmissionScenariosKeepSyntheticProvenanceAcrossDiskAndApiContract() {
+        val root=folder.newFolder();val queue=RecordOutbox(root)
+        for(scenario in SubmissionScenarios.all) {
+            val id=UUID.randomUUID().toString()
+            val report=DrivingEvaluationEngine().evaluate(ScenarioReview.session(scenario.frames.map { it.copy(runId=id) }))
+            val item=queue.enqueue(id,report,1_700_000_000_000,scenario.id)
+            val restored=RecordOutbox(root).find(id)!!
+            assertEquals(item,restored)
+            val model=Serializer.moshi.adapter(DrivingRecordUpload::class.java).fromJson(JsonDocuments.write(restored.payload))!!
+            assertEquals(DrivingRecordUpload.Origin.SYNTHETIC,model.origin)
+            assertEquals(scenario.id,model.scenarioId)
+            @Suppress("UNCHECKED_CAST")
+            val summary=restored.payload["report"] as Map<String,Any?>
+            assertEquals("SYNTHETIC",summary["origin"])
+            assertEquals("SIMULATED_ENVIRONMENT",(summary["environment"] as Map<*,*>)["source"])
+        }
+        assertEquals(13,RecordOutbox(root).items().size)
+    }
     @Test fun pendingPayloadSurvivesAReopenedQueueAndGeneratedContractRoundTrip() {
         val root=folder.newFolder();val queue=RecordOutbox(root);val id=UUID.randomUUID().toString()
         val item=queue.enqueue(id,report(),1_700_000_000_000)

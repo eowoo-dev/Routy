@@ -193,7 +193,7 @@ private fun PracticeOverview(report: EvaluationReport) {
 }
 
 @Composable
-private fun EnvironmentOverview(report:EvaluationReport) {
+fun EnvironmentOverview(report:EvaluationReport) {
     val result=report.environment ?: return
     val review=result.review ?: return
     Text("환경 관측 범위",style=MaterialTheme.typography.titleLarge)
@@ -209,7 +209,7 @@ private fun EnvironmentOverview(report:EvaluationReport) {
     if(review.groups.isEmpty())Text("관측된 복습 이벤트가 없습니다. 제외 시간과 평가 대상 상황도 함께 확인하세요.")
     review.groups.forEach { group ->
         var expanded by rememberSaveable(report.startMs,group.id) { mutableStateOf(false) }
-        Card(Modifier.fillMaxWidth()) {
+        Card(Modifier.fillMaxWidth(),colors=androidx.compose.material3.CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceVariant)) {
             Column(Modifier.padding(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                 Text("${seconds(group.startMs-report.startMs)}~${seconds(group.endMs-report.startMs)}초 · "+if(group.limited) "판단 보류·추가 관측 필요" else "합성 환경 관측",style=MaterialTheme.typography.labelLarge)
                 Text(group.title,style=MaterialTheme.typography.titleMedium)
