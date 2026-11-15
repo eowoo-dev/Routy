@@ -4,7 +4,7 @@
 
 - `apps/pleos`: Kotlin·Jetpack Compose Android 앱, 독립 Gradle 프로젝트.
 - `compose.dev.yaml`의 `pleos`: JDK 21, Android SDK, Gradle을 실행하는 빌드 도구 서비스.
-- `compose.prod.yaml`의 `pleos`: 같은 도구로 release APK를 만드는 독립 설정. APK 서명·스토어 배포는 아직 구성하지 않았습니다.
+- `compose.prod.yaml`의 `pleos`: 같은 도구로 release APK를 만드는 독립 설정. 공모전 제출 서명은 별도 패키징 스크립트를 사용하며 차량용 스토어 배포는 아직 구성하지 않았습니다.
 - Pleos Connect 2.1.0 에뮬레이터와 ADB는 Windows에서 실행합니다. Docker에서 에뮬레이터를 실행하지 않습니다.
 - `pleos` 서비스는 `tools` 프로필에 두었습니다. 상주 서버가 아니므로 `run --rm`으로 빌드할 때만 실행하며, 일반 `up`은 웹·DB만 시작합니다.
 
@@ -67,7 +67,7 @@ docker compose --env-file .env.prod -f compose.prod.yaml build pleos
 docker compose --env-file .env.prod -f compose.prod.yaml run --rm --no-deps pleos :app:assembleRelease
 ```
 
-위 release 결과는 서명되지 않은 APK입니다. 서명 키와 배포 CI는 별도로 구성해야 합니다. 운영 웹·DB 컨테이너에는 빌드 도구나 앱 소스를 마운트하지 않습니다.
+위 Gradle release 결과는 서명되지 않은 APK입니다. 공모전 제출용 서명된 APK는 루트 [README의 제출 안내](../../README.md#공모전-제출-및-실행-안내)의 `package-submission.sh` 명령으로 생성합니다. 전용 키는 `.local-signing/`에 보존하며 저장소에는 포함하지 않습니다. 운영 웹·DB 컨테이너에는 빌드 도구나 앱 소스를 마운트하지 않습니다.
 
 ## 버전과 현재 범위
 

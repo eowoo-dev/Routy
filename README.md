@@ -1,10 +1,62 @@
-# Routy
+# 루티 (Routy)
 
 개발 팀: **어쩌다우리 (EoWoo)** · 공식 도메인: **eowoo.org**
 
 운영 서비스: **https://routy.eowoo.org**
 
 차량에서 연습하고 스마트폰에서 계획·복습하는 운전 학습 서비스입니다.
+
+## 공모전 제출 및 실행 안내
+
+- 제출 대상: **Pleos Connect 차량용 앱** (`org.eowoo.routy.pleos`, 버전 `0.1.0`). 스마트폰용 Android 앱과는 별도입니다.
+- 실행 가능한 서명된 release APK: [apk/어쩌다우리_루티_release.apk](apk/어쩌다우리_루티_release.apk)
+- 파일 무결성 확인: [apk/SHA256SUMS](apk/SHA256SUMS)
+- 스마트폰 또는 노트북의 연결 및 기록 조회 화면: **https://routy.eowoo.org**
+
+### 제출 APK 실행 방법
+
+1. Pleos Connect 에뮬레이터를 부팅하고 Virtual Console에서 기어를 **P**, 속도를 **0**으로 설정합니다. 콘솔이 연결되어 있어야 이미지의 차량 시뮬레이션 브리지가 준비됩니다.
+2. Platform Tools의 ADB로 APK를 설치하고 실행합니다. 다음 명령은 저장소 루트의 PowerShell에서 실행하며, ADB가 PATH에 등록되어 있어야 합니다.
+
+```powershell
+adb -s emulator-5554 install -r "apk/어쩌다우리_루티_release.apk"
+adb -s emulator-5554 shell am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n org.eowoo.routy.pleos/org.eowoo.routy.pleos.feature.trip.DrivingActivity
+```
+
+3. 차량 홈의 **계정 연결**에서 연결 코드를 발급합니다. 웹에서 계정을 생성하거나 로그인한 뒤 **차량 연결**에 코드를 입력합니다. 제출 APK는 운영 서버를 사용하므로 에뮬레이터와 웹 접속 기기 모두 인터넷 연결이 필요합니다. 로컬 서버 실행이나 ADB 포트 역방향 연결은 필요하지 않습니다.
+4. 주차 상태에서 차량 앱의 **자동 기록** 설정을 켭니다. 초기값은 꺼짐입니다. 필요한 차량 속도 권한을 허용한 후, 앱이 실행된 상태에서 D단으로 전환하면 기록을 시작합니다. R단과 N단에서는 유지하며 P단을 10초 유지하면 평가 및 로컬 저장을 수행하고, 연결된 계정으로 업로드합니다. 자세한 기록은 웹의 **주행 기록**에서 확인합니다.
+
+### 테스트 환경과 구현 범위
+
+| 항목 | 개발 및 검증 환경 |
+| --- | --- |
+| Pleos Connect 에뮬레이터 이미지 | **2.1.0**, Android Automotive OS API **34**, x86_64 |
+| 화면 규격 | **2560 × 1440 px**, 가로 화면, 밀도 **160 dpi** |
+| 호스트 및 실행기 | Windows 11, Android Emulator **37.2.13**, WHPX, 호스트 GPU |
+| 에뮬레이터 할당 | CPU 4개, RAM 4GB, cold boot |
+| 차량 SDK | Pleos Vehicle SDK **2.3.2** |
+| 앱 빌드 | JDK 21, Gradle 8.13, compileSdk 36, targetSdk 34, minSdk 28 |
+| 서버 | Next.js / PostgreSQL, HTTPS `https://routy.eowoo.org` |
+
+제출 release APK에는 사용자 화면, 계정 연결, SDK 기반 주행 수집, 평가, 장시간 기록의 분할 저장과 복구, 업로드 기능이 포함됩니다. D단에서는 제한된 기록 화면을 사용하고 계정 연결과 상세 조작은 주차 상태에서 수행합니다. 서버에 연결할 수 없는 동안 완료 기록은 로컬에 보관하고 이후 전송을 재시도합니다.
+
+**차선, 신호등, 앞차 정보는 실제 센서로 탐지한 데이터가 아닙니다.** 해당 환경 평가 엔진과 독립 시나리오 실행기는 소스에 구현되어 있으나, Virtual Console 확장의 합성 입력과 개발 진단 화면은 debug 전용입니다. 제출 release APK에서는 이 입력 경로를 사용하지 않습니다. 입력이 없거나 신뢰할 수 없는 항목은 미평가로 처리합니다. 실도로 정확도와 실제 차량 호환성은 검증 범위에 포함되지 않습니다.
+
+### 소스 빌드 및 자동 테스트
+
+Docker Desktop의 Linux 컨테이너 모드로 차량 앱을 빌드할 수 있습니다. Android Studio 및 호스트 JDK는 필요하지 않습니다.
+
+```powershell
+docker compose -f compose.dev.yaml build pleos
+# 제출용 release 생성 및 서명 검증
+docker compose -f compose.dev.yaml run --rm --no-deps --entrypoint sh pleos /workspace/infra/pleos/package-submission.sh
+# Android 에뮬레이터 없이 주행 평가 엔진 테스트
+.\infra\pleos\test-scenarios.ps1
+```
+
+제출 패키징은 운영 HTTPS 주소를 명시해 빌드하고, 전용 키로 서명한 후 서명과 정렬 및 debug 비활성화를 확인합니다. 처음 실행하면 전용 서명 키와 비밀번호를 Git에서 제외된 `.local-signing/`에 생성합니다. **재빌드 및 업데이트 설치를 위해 이 파일들을 별도 보관하고 공개하지 마세요.** 기존 제출본과 동일한 서명이 필요한 경우 원래 키를 사용해야 합니다.
+
+개발용 웹, Virtual Console 확장, 에뮬레이터 입력 자동화는 아래 가이드와 [시나리오 자동화 가이드](docs/architecture/driving-evaluation-testing.md)를 참고하세요. 합성 환경 평가 시연에는 debug 빌드와 별도 개발용 콘솔이 필요합니다.
 
 팀 표기와 패키지 정책은 [프로젝트 식별자 안내](docs/architecture/project-identity.md)를 참고하세요.
 
