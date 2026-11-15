@@ -24,3 +24,5 @@ export type VehicleConnection = components["schemas"]["VehicleConnection"];
 export type VehiclePairingChallenge = components["schemas"]["VehiclePairingChallenge"];
 export type AccountVehicleResponse = components["schemas"]["AccountVehicleResponse"];
 export type PairingPreview = components["schemas"]["PairingPreview"];
+export type AccountDeletionInput = components["schemas"]["AccountDeletionInput"];
+export type AccountDeletionReceipt = components["schemas"]["AccountDeletionReceipt"];

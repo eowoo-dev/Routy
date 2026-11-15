@@ -175,6 +175,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/account/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Permanently erase current account and its linked vehicle records
+         * @description Requires the current password and explicit confirmation. Revokes all sessions and the old vehicle installation, deletes complete and staged records, and retains only separate minimal erasure hashes for resubmission blocking and backup restoration.
+         */
+        post: operations["deleteAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/account/vehicle": {
         parameters: {
             query?: never;
@@ -384,6 +404,16 @@ export interface components {
              * @description Absolute session expiry returned with native accessToken
              */
             expiresAt?: string;
+        };
+        AccountDeletionInput: {
+            /** Format: password */
+            password: string;
+            /** @enum {boolean} */
+            confirm: true;
+        };
+        AccountDeletionReceipt: {
+            /** @enum {boolean} */
+            deleted: true;
         };
         AccountSignupInput: {
             /** Format: email */
@@ -918,6 +948,35 @@ export interface operations {
             403: components["responses"]["ApiFailure"];
             409: components["responses"]["ApiFailure"];
             410: components["responses"]["ApiFailure"];
+            429: components["responses"]["ApiFailure"];
+            503: components["responses"]["ApiFailure"];
+        };
+    };
+    deleteAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountDeletionInput"];
+            };
+        };
+        responses: {
+            /** @description Account erased and sessions revoked */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountDeletionReceipt"];
+                };
+            };
+            400: components["responses"]["ApiFailure"];
+            401: components["responses"]["ApiFailure"];
+            403: components["responses"]["ApiFailure"];
             429: components["responses"]["ApiFailure"];
             503: components["responses"]["ApiFailure"];
         };

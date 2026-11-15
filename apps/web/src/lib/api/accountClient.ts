@@ -63,7 +63,7 @@ export function createAccountClient(options: {
       // Credentials stay in the transport and never enter React state.
       delete value.accessToken;
     }
-    if (native && (path === "auth/logout" || (path === "auth/session" && !value.user))) await clear(token);
+    if (native && (path === "auth/logout" || path === "account/delete" || (path === "auth/session" && !value.user))) await clear(token);
     return value as T;
   }
   return { request, authorization };

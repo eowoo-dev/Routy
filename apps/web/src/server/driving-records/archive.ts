@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { db } from "@/server/db";
 import type { Prisma } from "@/generated/prisma/client";
 import { ApiProblem,canonical,digest,object,upload } from "./validation";
+import { assertActiveInstallation, lockInstallation } from "../account/erasure-transaction";
 
 export const PART_BYTES=196_608;
 const fail=(status:number,code:string,message:string):never=>{throw new ApiProblem(status,code,message);};
@@ -17,6 +18,8 @@ export function archiveManifest(value:unknown) {
   return {parts:Number(v.parts),bytes:Number(v.bytes),sha256:v.sha256};
 }
 async function lock(tx:Prisma.TransactionClient,installationId:string,sessionId:string) {
+  await lockInstallation(tx,installationId);
+  await assertActiveInstallation(tx,installationId);
   // Shared by append and complete: a final record can never gain extra parts.
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${installationId+":"+sessionId}, 0))`;
 }

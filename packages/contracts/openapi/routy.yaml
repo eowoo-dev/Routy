@@ -207,6 +207,28 @@ paths:
         '410': {$ref: '#/components/responses/ApiFailure'}
         '429': {$ref: '#/components/responses/ApiFailure'}
         '503': {$ref: '#/components/responses/ApiFailure'}
+  /api/account/delete:
+    post:
+      operationId: deleteAccount
+      summary: Permanently erase current account and its linked vehicle records
+      description: Requires the current password and explicit confirmation. Revokes all sessions and the old vehicle installation, deletes complete and staged records, and retains only separate minimal erasure hashes for resubmission blocking and backup restoration.
+      security: [{accountCookie: []}, {accountBearer: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AccountDeletionInput'}
+      responses:
+        '200':
+          description: Account erased and sessions revoked
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AccountDeletionReceipt'}
+        '400': {$ref: '#/components/responses/ApiFailure'}
+        '401': {$ref: '#/components/responses/ApiFailure'}
+        '403': {$ref: '#/components/responses/ApiFailure'}
+        '429': {$ref: '#/components/responses/ApiFailure'}
+        '503': {$ref: '#/components/responses/ApiFailure'}
   /api/account/vehicle:
     get:
       operationId: getAccountVehicle
@@ -479,6 +501,18 @@ components:
           type: string
           format: date-time
           description: Absolute session expiry returned with native accessToken
+    AccountDeletionInput:
+      type: object
+      additionalProperties: false
+      required: [password, confirm]
+      properties:
+        password: {type: string, format: password, minLength: 10, maxLength: 128}
+        confirm: {type: boolean, enum: [true]}
+    AccountDeletionReceipt:
+      type: object
+      required: [deleted]
+      properties:
+        deleted: {type: boolean, enum: [true]}
     AccountSignupInput:
       type: object
       required: [email, password, displayName]

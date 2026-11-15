@@ -17,6 +17,7 @@ apps/web/src/generated/
 
 # Local configuration and credentials
 .local-signing/
+.ops-backups/
 .env*
 !.env.example
 !.env.*.example

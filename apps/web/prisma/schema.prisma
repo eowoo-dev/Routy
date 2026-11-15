@@ -100,3 +100,16 @@ model RequestLimit {
   expiresAt DateTime @db.Timestamptz(3)
   @@index([expiresAt])
 }
+
+// No account relation or raw installation ID: prevents an old vehicle outbox from restoring erased records.
+model RevokedInstallation {
+  installationHash String @id @db.Char(64)
+}
+
+// Export separately before restoring a backup; contains no email or driving payload.
+model AccountErasure {
+  accountHash String @id @db.Char(64)
+  deletedAt DateTime @default(now()) @db.Timestamptz(3)
+  expiresAt DateTime @db.Timestamptz(3)
+  @@index([expiresAt])
+}

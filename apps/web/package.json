@@ -20,7 +20,9 @@
     "db:deploy": "prisma migrate deploy",
     "test:records": "tsx --test test/driving-records*.test.ts",
     "test:pairing": "tsx --test test/account-pairing.api.test.ts",
-    "test:mobile-auth": "tsx --test test/account-client.test.ts test/account-mobile.api.test.ts"
+    "test:mobile-auth": "tsx --test test/account-client.test.ts test/account-mobile.api.test.ts",
+    "test:account-deletion": "tsx --test test/account-deletion.api.test.ts",
+    "account:erasures": "tsx scripts/account-erasures.ts"
   },
   "dependencies": {
     "@aparajita/capacitor-secure-storage": "8.0.1",

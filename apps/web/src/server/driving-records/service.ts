@@ -5,12 +5,17 @@ import type { DrivingRecord, Prisma } from "@/generated/prisma/client";
 import { db } from "@/server/db";
 import { ApiProblem,canonical,digest,uuid } from "./validation";
 import { archiveReviewPreview } from "./review-preview";
+import { assertActiveInstallation, lockInstallation } from "../account/erasure-transaction";
 
 function equal(a:string,b:string){return timingSafeEqual(Buffer.from(a,"hex"),Buffer.from(b,"hex"));}
 function duplicate(e:unknown){return !!e && typeof e==="object" && "code" in e && e.code==="P2002";}
 export async function register(installationId:string,secret:string):Promise<boolean> {
   const secretHash=digest(secret);
-  try{await db.vehicleInstallation.create({data:{id:installationId,secretHash}});return true;}
+  try{return await db.$transaction(async tx=>{await lockInstallation(tx,installationId);
+    if(await tx.revokedInstallation.findUnique({where:{installationHash:digest(installationId)}}))throw new ApiProblem(401,"INSTALLATION_REVOKED","해제된 차량 설치입니다. 차량 앱을 초기화해주세요.");
+    const existing=await tx.vehicleInstallation.findUnique({where:{id:installationId}});
+    if(existing){if(!equal(existing.secretHash,secretHash))throw new ApiProblem(409,"INSTALLATION_CONFLICT","이미 등록된 설치 ID입니다.");return false;}
+    await tx.vehicleInstallation.create({data:{id:installationId,secretHash}});return true;});}
   catch(e){if(!duplicate(e))throw e;const existing=await db.vehicleInstallation.findUnique({where:{id:installationId}});
     if(!existing || !equal(existing.secretHash,secretHash))throw new ApiProblem(409,"INSTALLATION_CONFLICT","이미 등록된 설치 ID입니다.");return false;}
 }
@@ -18,6 +23,7 @@ export async function authenticate(request:Request):Promise<string> {
   const match=/^Bearer ([a-f0-9-]{36})\.([a-f0-9]{64})$/i.exec(request.headers.get("authorization")??"");
   if(!match)throw new ApiProblem(401,"UNAUTHORIZED","차량 설치 인증이 필요합니다.");
   let id:string;try{id=uuid(match[1]);}catch{throw new ApiProblem(401,"UNAUTHORIZED","차량 설치 인증이 필요합니다.");}
+  if(await db.revokedInstallation.findUnique({where:{installationHash:digest(id)}}))throw new ApiProblem(401,"INSTALLATION_REVOKED","해제된 차량 설치입니다. 차량 앱을 초기화해주세요.");
   const installation=await db.vehicleInstallation.findUnique({where:{id}});
   if(!installation || !equal(installation.secretHash,digest(match[2])))throw new ApiProblem(401,"UNAUTHORIZED","차량 설치 인증에 실패했습니다.");
   return id;
@@ -25,7 +31,7 @@ export async function authenticate(request:Request):Promise<string> {
 export async function put(installationId:string,sessionId:string,input:DrivingRecordUpload) {
   const payloadHash=digest(canonical(input));
   try {
-    const row=await db.drivingRecord.create({data:{installationId,sessionId,...input,startedAt:new Date(input.startedAt),endedAt:new Date(input.endedAt),report:input.report as Prisma.InputJsonObject,payloadHash}});
+    const row=await db.$transaction(async tx=>{await lockInstallation(tx,installationId);await assertActiveInstallation(tx,installationId);return tx.drivingRecord.create({data:{installationId,sessionId,...input,startedAt:new Date(input.startedAt),endedAt:new Date(input.endedAt),report:input.report as Prisma.InputJsonObject,payloadHash}});});
     return {created:true,receipt:{id:row.id,sessionId:row.sessionId,receivedAt:row.receivedAt.toISOString()}};
   }catch(e){if(!duplicate(e))throw e;
     const row=await db.drivingRecord.findUnique({where:{installationId_sessionId:{installationId,sessionId}}});

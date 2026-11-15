@@ -66,3 +66,12 @@ test("native login fails closed against old server or insecure API configuration
   await assert.rejects(createAccountClient(f.options).request("auth/login", {}), /HTTPS/);
   assert.equal(f.calls.length, 1);
 });
+test("account deletion clears native credentials only when deletion succeeds", async () => {
+  const f = fixture(true, token);
+  f.handler(async () => Response.json({ message: "wrong password" }, { status: 403 }));
+  await assert.rejects(f.client.request("account/delete", { password: "wrong", confirm: true }));
+  assert.equal(f.saved(), token);
+  f.handler(async () => Response.json({ deleted: true }));
+  await f.client.request("account/delete", { password: "correct", confirm: true });
+  assert.equal(f.saved(), null);
+});
