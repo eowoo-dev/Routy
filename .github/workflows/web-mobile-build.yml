@@ -1,0 +1,186 @@
+name: Web and mobile builds
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/web/**'
+      - 'packages/contracts/**'
+      - 'patches/**'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'package.json'
+      - '.github/workflows/web-mobile-build.yml'
+  pull_request:
+    paths:
+      - 'apps/web/**'
+      - 'packages/contracts/**'
+      - 'patches/**'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'package.json'
+      - '.github/workflows/web-mobile-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-mobile-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NEXT_TELEMETRY_DISABLED: '1'
+  NEXT_PUBLIC_API_BASE_URL: https://eowoo.org/api
+
+jobs:
+  web:
+    name: Next.js server
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: postgresql://routy:build_only@127.0.0.1:5432/routy_build
+      ROUTY_PUBLIC_WEB_ORIGIN: https://eowoo.org
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26.12.1'
+      - name: Install locked dependencies
+        run: |
+          npm install --global pnpm@11.2.2
+          pnpm install --frozen-lockfile
+          pnpm contracts:generate
+          pnpm --filter @routy/web db:generate
+      - name: Build standalone server
+        run: pnpm build:web
+      - name: Package server
+        run: |
+          mkdir -p apps/web/.next/standalone/apps/web/.next/static apps/web/.next/standalone/apps/web/public
+          cp -R apps/web/.next/static/. apps/web/.next/standalone/apps/web/.next/static/
+          cp -R apps/web/public/. apps/web/.next/standalone/apps/web/public/
+          mkdir -p build/artifacts
+          tar -czf build/artifacts/routy-web-standalone.tar.gz -C apps/web/.next/standalone .
+      - uses: actions/upload-artifact@v7
+        with:
+          name: routy-web-standalone
+          path: build/artifacts/routy-web-standalone.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  mobile-web:
+    name: Capacitor web assets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26.12.1'
+      - name: Install locked dependencies
+        run: |
+          npm install --global pnpm@11.2.2
+          pnpm install --frozen-lockfile
+          pnpm contracts:generate
+      - name: Build static app without server routes
+        run: pnpm build:app
+      - uses: actions/upload-artifact@v7
+        with:
+          name: routy-mobile-web
+          path: apps/web/out/
+          if-no-files-found: error
+          retention-days: 7
+
+  native:
+    name: ${{ matrix.name }}
+    needs: mobile-web
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: android
+            name: Android APK and AAB
+            runner: ubuntu-24.04
+          - platform: ios
+            name: iOS simulator and unsigned device
+            runner: macos-26
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26.12.1'
+      - name: Install locked dependencies
+        run: |
+          npm install --global pnpm@11.2.2
+          pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v8
+        with:
+          name: routy-mobile-web
+          path: apps/web/out/
+      - name: Sync native project
+        run: pnpm --filter @routy/web exec cap sync ${{ matrix.platform }}
+      - uses: actions/setup-java@v6
+        if: matrix.platform == 'android'
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+          cache-dependency-path: |
+            apps/web/android/**/*.gradle
+            apps/web/android/gradle/wrapper/gradle-wrapper.properties
+      - name: Prepare Android SDK
+        if: matrix.platform == 'android'
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;35.0.0"'
+      - name: Build Android
+        if: matrix.platform == 'android'
+        working-directory: apps/web/android
+        run: sh ./gradlew --no-daemon --console=plain assembleDebug assembleRelease bundleRelease
+      - uses: actions/upload-artifact@v7
+        if: matrix.platform == 'android'
+        with:
+          name: routy-android
+          path: |
+            apps/web/android/app/build/outputs/apk/debug/*.apk
+            apps/web/android/app/build/outputs/apk/release/*-unsigned.apk
+            apps/web/android/app/build/outputs/bundle/release/*.aab
+          if-no-files-found: error
+          retention-days: 7
+      - name: Build iOS simulator
+        if: matrix.platform == 'ios'
+        working-directory: apps/web
+        run: |
+          xcodebuild -version
+          set -o pipefail
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath ios/build/simulator \
+            -resultBundlePath ios/build/results/simulator.xcresult CODE_SIGNING_ALLOWED=NO build \
+            | tee ios-simulator-build.log
+      - name: Build unsigned iOS device app
+        if: matrix.platform == 'ios'
+        working-directory: apps/web
+        run: |
+          set -o pipefail
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' -derivedDataPath ios/build/device \
+            -resultBundlePath ios/build/results/device.xcresult CODE_SIGNING_ALLOWED=NO build \
+            | tee ios-device-build.log
+          mkdir -p ios/build/artifacts
+          ditto -c -k --sequesterRsrc --keepParent ios/build/simulator/Build/Products/Debug-iphonesimulator/App.app ios/build/artifacts/routy-ios-simulator.zip
+          ditto -c -k --sequesterRsrc --keepParent ios/build/device/Build/Products/Release-iphoneos/App.app ios/build/artifacts/routy-ios-device-unsigned.zip
+      - uses: actions/upload-artifact@v7
+        if: matrix.platform == 'ios'
+        with:
+          name: routy-ios
+          path: apps/web/ios/build/artifacts/*.zip
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@v7
+        if: always() && matrix.platform == 'ios'
+        with:
+          name: routy-ios-build-logs
+          path: |
+            apps/web/ios-*-build.log
+            apps/web/ios/build/results/
+          retention-days: 7

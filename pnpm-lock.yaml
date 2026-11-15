@@ -17,8 +17,8 @@ importers:
         specifier: ^3.1095.0
         version: 3.1167.0
       '@capacitor/android':
-        specifier: 8.3.4
-        version: 8.3.4(@capacitor/core@8.6.0)
+        specifier: 8.6.0
+        version: 8.6.0(@capacitor/core@8.6.0)
       '@capacitor/app':
         specifier: 8.1.1
         version: 8.1.1(@capacitor/core@8.6.0)
@@ -26,7 +26,7 @@ importers:
         specifier: 8.0.4
         version: 8.0.4(@capacitor/core@8.6.0)
       '@capacitor/core':
-        specifier: ^8.3.4
+        specifier: 8.6.0
         version: 8.6.0
       '@capacitor/filesystem':
         specifier: 8.1.4
@@ -35,8 +35,8 @@ importers:
         specifier: 8.2.2
         version: 8.2.2(@capacitor/core@8.6.0)
       '@capacitor/ios':
-        specifier: 8.3.4
-        version: 8.3.4(@capacitor/core@8.6.0)
+        specifier: 8.6.0
+        version: 8.6.0(@capacitor/core@8.6.0)
       '@capacitor/local-notifications':
         specifier: 8.3.1
         version: 8.3.1(@capacitor/core@8.6.0)
@@ -123,7 +123,7 @@ importers:
         specifier: 3.0.5
         version: 3.0.5(bare-buffer@3.7.1)
       '@capacitor/cli':
-        specifier: ^8.3.4
+        specifier: 8.6.0
         version: 8.6.0
       '@types/node':
         specifier: ^26
@@ -316,10 +316,10 @@ packages:
     resolution: {integrity: sha512-UjI/dKmwJwT9pOszJitq2G6EObZPnsZUfdCr92z2TlF3EZK9J3EdfOKUrCzHl6wFthbzwhzl1Soc/UIwxRiq6w==}
     engines: {node: '>=6.9.0'}
 
-  '@capacitor/android@8.3.4':
-    resolution: {integrity: sha512-7gJjrG3X32Am1QMLqgMztWTYMLMVNE+VZwhekNxhvYizH4mOV05vH+rC9B+f17bCkYZfyu/qXQX6hoY7kLeVZw==}
+  '@capacitor/android@8.6.0':
+    resolution: {integrity: sha512-6IJS0TCfV/F/8+324CCwYd3xL6r+TH0W7zzaxYzPz9IV3YWCNvsZDuCCPHUIBC5iASb9od827ddSJ6rz+9Pu1Q==}
     peerDependencies:
-      '@capacitor/core': ^8.3.0
+      '@capacitor/core': ^8.6.0
 
   '@capacitor/app@8.1.1':
     resolution: {integrity: sha512-xM2ZTX5jK60tFtmjsmJv+Cdj1Qsb6NcavkqmdEnCPQBeya9oKhamZJxYOnQNj1ZvcJM7sWfG6BEtSLx42pisbA==}
@@ -359,10 +359,10 @@ packages:
     peerDependencies:
       '@capacitor/core': '>=8.0.0'
 
-  '@capacitor/ios@8.3.4':
-    resolution: {integrity: sha512-XvvnPFWWP/gwwO811ue7nEBKSZqDCIB8hxGgWV6iXA7DSVLqMOEmQdfHj94kkVxof2wL9XWHypu3ayDULo7U5w==}
+  '@capacitor/ios@8.6.0':
+    resolution: {integrity: sha512-Y2PE4zoBqMrSTWoVMJmX2byBznjn6egmATzoEUJiGVbVubkNpAvkF/tl0SBKDyP67ngyedTx1tQq5IGYIhby1A==}
     peerDependencies:
-      '@capacitor/core': ^8.3.0
+      '@capacitor/core': ^8.6.0
 
   '@capacitor/local-notifications@8.3.1':
     resolution: {integrity: sha512-F7zu/+p/mIR958YP4axOkeI5hBKRaXDyYjbNPrAil2wWfd7OxScPSTvP9t85NpQ0eULVRu0/sntoxOg6ck477A==}
@@ -4323,7 +4323,7 @@ snapshots:
       '@babel/helper-string-parser': 7.29.14
       '@babel/helper-validator-identifier': 7.29.7
 
-  '@capacitor/android@8.3.4(@capacitor/core@8.6.0)':
+  '@capacitor/android@8.6.0(@capacitor/core@8.6.0)':
     dependencies:
       '@capacitor/core': 8.6.0
 
@@ -4363,7 +4363,7 @@ snapshots:
       '@ionic/utils-subprocess': 2.1.14
       '@ionic/utils-terminal': 2.3.5
       commander: 9.5.0
-      debug: 4.3.4
+      debug: 4.4.3(supports-color@10.2.2)
       env-paths: 2.2.1
       kleur: 4.1.5
       native-run: 2.1.0
@@ -4373,7 +4373,7 @@ snapshots:
       rimraf: 4.4.1
       semver: 7.8.6
       tar: 6.2.1
-      tslib: 2.6.2
+      tslib: 2.9.1
       xml2js: 0.5.0
     transitivePeerDependencies:
       - supports-color
@@ -4415,7 +4415,7 @@ snapshots:
       '@capacitor/core': 8.6.0
       '@capacitor/synapse': 1.0.4
 
-  '@capacitor/ios@8.3.4(@capacitor/core@8.6.0)':
+  '@capacitor/ios@8.6.0(@capacitor/core@8.6.0)':
     dependencies:
       '@capacitor/core': 8.6.0
 
@@ -4781,17 +4781,17 @@ snapshots:
 
   '@ionic/utils-array@2.1.6':
     dependencies:
-      debug: 4.3.4
-      tslib: 2.6.2
+      debug: 4.4.3(supports-color@10.2.2)
+      tslib: 2.9.1
     transitivePeerDependencies:
       - supports-color
 
   '@ionic/utils-fs@3.1.7':
     dependencies:
       '@types/fs-extra': 8.1.5
-      debug: 4.3.4
+      debug: 4.4.3(supports-color@10.2.2)
       fs-extra: 9.1.0
-      tslib: 2.6.2
+      tslib: 2.9.1
     transitivePeerDependencies:
       - supports-color
 
@@ -4806,10 +4806,10 @@ snapshots:
     dependencies:
       '@ionic/utils-object': 2.1.6
       '@ionic/utils-terminal': 2.3.4
-      debug: 4.3.4
+      debug: 4.4.3(supports-color@10.2.2)
       signal-exit: 3.0.7
       tree-kill: 1.2.2
-      tslib: 2.6.2
+      tslib: 2.9.1
     transitivePeerDependencies:
       - supports-color
 
@@ -4826,8 +4826,8 @@ snapshots:
 
   '@ionic/utils-stream@3.1.6':
     dependencies:
-      debug: 4.3.4
-      tslib: 2.6.2
+      debug: 4.4.3(supports-color@10.2.2)
+      tslib: 2.9.1
     transitivePeerDependencies:
       - supports-color
 
@@ -4846,8 +4846,8 @@ snapshots:
       '@ionic/utils-stream': 3.1.6
       '@ionic/utils-terminal': 2.3.4
       cross-spawn: 7.0.6
-      debug: 4.3.4
-      tslib: 2.6.2
+      debug: 4.4.3(supports-color@10.2.2)
+      tslib: 2.9.1
     transitivePeerDependencies:
       - supports-color
 
@@ -4867,12 +4867,12 @@ snapshots:
   '@ionic/utils-terminal@2.3.4':
     dependencies:
       '@types/slice-ansi': 4.0.0
-      debug: 4.3.4
+      debug: 4.4.3(supports-color@10.2.2)
       signal-exit: 3.0.7
       slice-ansi: 4.0.0
       string-width: 4.2.3
       strip-ansi: 6.0.1
-      tslib: 2.6.2
+      tslib: 2.9.1
       untildify: 4.0.0
       wrap-ansi: 7.0.0
     transitivePeerDependencies:

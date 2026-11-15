@@ -50,7 +50,7 @@ Routy/
 - pnpm workspace는 `apps/web`, `packages/contracts`를 관리합니다. `apps/pleos`는 Gradle로 빌드합니다.
 - Android·iOS 앱 빌드 및 배포는 GitHub Actions를 사용합니다. iOS 빌드는 macOS 러너에서 수행합니다.
 
-웹은 Next.js·Emotion·TanStack Query·Zustand·Prisma·Capacitor를 기반으로 구성했습니다. `/api/health`와 OpenAPI 기반 TypeScript 계약 생성, 서버용 standalone 빌드와 앱용 정적 빌드를 제공합니다. 차량용 앱은 Kotlin·Compose·Vehicle SDK 기반 Gradle 프로젝트이며 같은 OpenAPI에서 Kotlin 클라이언트를 생성합니다. 주행 기록 DB·API와 차량 앱의 완료 기록 업로드를 제공합니다. 스마트폰 네이티브 프로젝트와 배포 CI는 후속 작업입니다.
+웹은 Next.js·Emotion·TanStack Query·Zustand·Prisma·Capacitor를 기반으로 구성했습니다. `/api/health`와 OpenAPI 기반 TypeScript 계약 생성, 서버용 standalone 빌드와 앱용 정적 빌드를 제공합니다. 차량용 앱은 Kotlin·Compose·Vehicle SDK 기반 Gradle 프로젝트이며 같은 OpenAPI에서 Kotlin 클라이언트를 생성합니다. 주행 기록 DB·API와 차량 앱의 완료 기록 업로드를 제공합니다. 스마트폰용 Android와 iOS 프로젝트 및 GitHub Actions 빌드는 [모바일 빌드 안내](docs/architecture/mobile-builds.md)를 참고하세요.
 
 ## 웹 개발 시작
 
