@@ -16,6 +16,7 @@ apps/web/ios-*-build.log
 apps/web/src/generated/
 
 # Local configuration and credentials
+.local-signing/
 .env*
 !.env.example
 !.env.*.example

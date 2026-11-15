@@ -1,0 +1,236 @@
+name: Mobile beta release
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Target platform
+        type: choice
+        options: [both, android, ios]
+        default: both
+      operation:
+        description: Build signed files only or upload to testing services
+        type: choice
+        options: [build-only, upload]
+        default: build-only
+      build_number:
+        description: Optional unused build number (blank = base + workflow run number)
+        type: string
+        default: ''
+      android_release_status:
+        description: Play closed release status (use draft for an app still in setup)
+        type: choice
+        options: [draft, completed]
+        default: draft
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-beta-release
+  cancel-in-progress: false
+
+env:
+  NEXT_TELEMETRY_DISABLED: '1'
+  NEXT_PUBLIC_API_BASE_URL: https://routy.eowoo.org/api
+  FASTLANE_SKIP_UPDATE_CHECK: '1'
+  FASTLANE_HIDE_CHANGELOG: '1'
+  FASTLANE_OPT_OUT_USAGE: '1'
+
+jobs:
+  prepare:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    outputs:
+      build: ${{ steps.config.outputs.buildNumber }}
+      track: ${{ steps.config.outputs.track }}
+      status: ${{ steps.config.outputs.status }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26.12.1'
+      - name: Validate release configuration
+        id: config
+        env:
+          RELEASE_PLATFORM: ${{ inputs.platform }}
+          RELEASE_BUILD_NUMBER: ${{ inputs.build_number }}
+          MOBILE_BUILD_NUMBER_BASE: ${{ vars.MOBILE_BUILD_NUMBER_BASE }}
+          PLAY_CLOSED_TRACK: ${{ vars.PLAY_CLOSED_TRACK }}
+          PLAY_RELEASE_STATUS: ${{ inputs.android_release_status }}
+        run: node infra/mobile/release.mjs config
+      - name: Test release guards
+        run: |
+          node --test infra/mobile/release.test.mjs
+          python3 -m unittest discover -s infra/mobile -p 'test_*.py'
+
+  mobile-web:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26.12.1'
+      - name: Build shared mobile web assets
+        run: |
+          npm install --global pnpm@11.2.2
+          pnpm install --frozen-lockfile
+          pnpm contracts:generate
+          pnpm build:app
+      - uses: actions/upload-artifact@v7
+        with:
+          name: routy-beta-web
+          path: apps/web/out/
+          if-no-files-found: error
+          retention-days: 7
+
+  android:
+    if: inputs.platform == 'android' || inputs.platform == 'both'
+    needs: [prepare, mobile-web]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      RELEASE_BUILD_NUMBER: ${{ needs.prepare.outputs.build }}
+      PLAY_CLOSED_TRACK: ${{ needs.prepare.outputs.track }}
+      PLAY_RELEASE_STATUS: ${{ needs.prepare.outputs.status }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26.12.1'
+      - name: Prepare signing and upload credentials
+        env:
+          RELEASE_UPLOAD: ${{ inputs.operation == 'upload' }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: node infra/mobile/release.mjs prepare android
+      - name: Install locked dependencies
+        run: |
+          npm install --global pnpm@11.2.2
+          pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v8
+        with:
+          name: routy-beta-web
+          path: apps/web/out/
+      - name: Sync Android
+        run: pnpm --filter @routy/web exec cap sync android
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+          cache-dependency-path: apps/web/android/**/*.gradle
+      - name: Install Android SDK
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;35.0.0"'
+      - name: Build signed Android release
+        working-directory: apps/web/android
+        env:
+          ROUTY_REQUIRE_SIGNING: '1'
+          ROUTY_VERSION_CODE: ${{ needs.prepare.outputs.build }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: sh ./gradlew --no-daemon --console=plain assembleRelease bundleRelease
+      - uses: actions/upload-artifact@v7
+        with:
+          name: routy-android-beta-${{ needs.prepare.outputs.build }}
+          path: |
+            apps/web/android/app/build/outputs/apk/release/app-release.apk
+            apps/web/android/app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+          retention-days: 7
+      - uses: ruby/setup-ruby@v1
+        if: inputs.operation == 'upload'
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+          working-directory: infra/mobile
+      - name: Upload to configured Play closed track
+        if: inputs.operation == 'upload'
+        working-directory: infra/mobile
+        run: bundle exec fastlane android_closed
+      - name: Remove temporary credentials
+        if: always()
+        run: node infra/mobile/release.mjs cleanup
+
+  ios:
+    if: inputs.platform == 'ios' || inputs.platform == 'both'
+    needs: [prepare, mobile-web]
+    runs-on: macos-26
+    timeout-minutes: 40
+    env:
+      RELEASE_BUILD_NUMBER: ${{ needs.prepare.outputs.build }}
+      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26.12.1'
+      - name: Prepare signing and upload credentials
+        env:
+          RELEASE_UPLOAD: ${{ inputs.operation == 'upload' }}
+          IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_PROVISION_PROFILE_BASE64: ${{ secrets.IOS_PROVISION_PROFILE_BASE64 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_PRIVATE_KEY_BASE64: ${{ secrets.ASC_PRIVATE_KEY_BASE64 }}
+        run: node infra/mobile/release.mjs prepare ios
+      - name: Install matching Apple profile and certificate
+        env:
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+        run: python3 infra/mobile/ios-signing.py install
+      - name: Install locked dependencies
+        run: |
+          npm install --global pnpm@11.2.2
+          pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v8
+        with:
+          name: routy-beta-web
+          path: apps/web/out/
+      - name: Sync iOS
+        run: pnpm --filter @routy/web exec cap sync ios
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+          working-directory: infra/mobile
+      - name: Configure app target signing
+        working-directory: infra/mobile
+        run: bundle exec ruby ios-project.rb
+      - name: Archive and export signed IPA
+        shell: bash
+        run: |
+          set -o pipefail
+          xcodebuild -project apps/web/ios/App/App.xcodeproj -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath apps/web/ios/build/Routy.xcarchive \
+            -derivedDataPath apps/web/ios/build/derived archive
+          xcodebuild -exportArchive -archivePath apps/web/ios/build/Routy.xcarchive \
+            -exportOptionsPlist "$RUNNER_TEMP/routy-mobile-release/ExportOptions.plist" \
+            -exportPath apps/web/ios/build/beta
+          mv apps/web/ios/build/beta/App.ipa apps/web/ios/build/beta/Routy.ipa
+      - uses: actions/upload-artifact@v7
+        with:
+          name: routy-ios-beta-${{ needs.prepare.outputs.build }}
+          path: apps/web/ios/build/beta/Routy.ipa
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload to TestFlight
+        if: inputs.operation == 'upload'
+        working-directory: infra/mobile
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: bundle exec fastlane ios_testflight
+      - name: Remove temporary Apple signing material
+        if: always()
+        run: |
+          status=0
+          python3 infra/mobile/ios-signing.py cleanup || status=$?
+          node infra/mobile/release.mjs cleanup
+          exit "$status"

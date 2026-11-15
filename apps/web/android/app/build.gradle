@@ -1,5 +1,15 @@
 apply plugin: 'com.android.application'
 
+def signingNames = ['ANDROID_KEYSTORE_PATH', 'ANDROID_KEYSTORE_PASSWORD', 'ANDROID_KEY_ALIAS', 'ANDROID_KEY_PASSWORD']
+def hasSigning = signingNames.every { System.getenv(it)?.trim() }
+if ((System.getenv('ROUTY_REQUIRE_SIGNING') == '1' || signingNames.any { System.getenv(it) }) && !hasSigning) {
+    throw new GradleException('All Android signing environment variables are required for a signed release')
+}
+def buildNumber = System.getenv('ROUTY_VERSION_CODE') ?: '1'
+if (!(buildNumber ==~ /[1-9][0-9]*/) || new BigInteger(buildNumber) > 2100000000) {
+    throw new GradleException('ROUTY_VERSION_CODE must be an integer between 1 and 2100000000')
+}
+
 android {
     namespace = "org.eowoo.routy"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,7 +17,7 @@ android {
         applicationId "org.eowoo.routy"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
+        versionCode buildNumber.toInteger()
         versionName "0.1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
@@ -16,8 +26,19 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (hasSigning) {
+            release {
+                storeFile file(System.getenv('ANDROID_KEYSTORE_PATH'))
+                storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ANDROID_KEY_ALIAS')
+                keyPassword System.getenv('ANDROID_KEY_PASSWORD')
+            }
+        }
+    }
     buildTypes {
         release {
+            if (hasSigning) { signingConfig signingConfigs.release }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

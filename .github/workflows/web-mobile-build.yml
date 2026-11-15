@@ -11,6 +11,8 @@ on:
       - 'pnpm-workspace.yaml'
       - 'package.json'
       - '.github/workflows/web-mobile-build.yml'
+      - '.github/workflows/mobile-beta-release.yml'
+      - 'infra/mobile/**'
   pull_request:
     paths:
       - 'apps/web/**'
@@ -20,6 +22,8 @@ on:
       - 'pnpm-workspace.yaml'
       - 'package.json'
       - '.github/workflows/web-mobile-build.yml'
+      - '.github/workflows/mobile-beta-release.yml'
+      - 'infra/mobile/**'
   workflow_dispatch:
 
 permissions:
@@ -34,6 +38,25 @@ env:
   NEXT_PUBLIC_API_BASE_URL: https://routy.eowoo.org/api
 
 jobs:
+  beta-tools:
+    name: Beta upload configuration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+          working-directory: infra/mobile
+      - name: Validate upload lanes without credentials or publishing
+        working-directory: infra/mobile
+        env:
+          FASTLANE_SKIP_UPDATE_CHECK: '1'
+          FASTLANE_OPT_OUT_USAGE: '1'
+        run: |
+          bundle exec fastlane lanes
+          ruby -c ios-project.rb
   web:
     name: Next.js server
     runs-on: ubuntu-24.04
@@ -84,6 +107,10 @@ jobs:
           pnpm contracts:generate
       - name: Build static app without server routes
         run: pnpm build:app
+      - name: Validate beta release guards
+        run: |
+          node --test infra/mobile/release.test.mjs
+          python3 -m unittest discover -s infra/mobile -p 'test_*.py'
       - uses: actions/upload-artifact@v7
         with:
           name: routy-mobile-web
@@ -147,6 +174,22 @@ jobs:
             apps/web/android/app/build/outputs/bundle/release/*.aab
           if-no-files-found: error
           retention-days: 7
+      - name: Verify Android release signing with disposable CI key
+        if: matrix.platform == 'android'
+        working-directory: apps/web/android
+        env:
+          ROUTY_REQUIRE_SIGNING: '1'
+          ROUTY_VERSION_CODE: '1001'
+          ANDROID_KEY_ALIAS: routy-ci-only
+          ANDROID_KEYSTORE_PASSWORD: routy-ci-only
+          ANDROID_KEY_PASSWORD: routy-ci-only
+        run: |
+          export ANDROID_KEYSTORE_PATH="$RUNNER_TEMP/routy-ci-only.p12"
+          keytool -genkeypair -noprompt -storetype PKCS12 -keystore "$ANDROID_KEYSTORE_PATH" \
+            -storepass "$ANDROID_KEYSTORE_PASSWORD" -keypass "$ANDROID_KEY_PASSWORD" \
+            -alias "$ANDROID_KEY_ALIAS" -keyalg RSA -keysize 2048 -validity 2 -dname "CN=Routy Disposable CI"
+          sh ./gradlew --no-daemon --console=plain bundleRelease
+          LC_ALL=C jarsigner -verify app/build/outputs/bundle/release/app-release.aab | grep 'jar verified'
       - name: Build iOS simulator
         if: matrix.platform == 'ios'
         working-directory: apps/web

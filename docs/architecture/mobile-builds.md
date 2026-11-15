@@ -2,6 +2,8 @@
 
 저장소는 `https://github.com/eowoo-dev/Routy`입니다. `Web and mobile builds` 워크플로는 main push, 관련 pull request 및 수동 실행을 지원합니다.
 
+TestFlight 및 Google Play 비공개 테스트용 서명과 업로드는 [베타 배포 가이드](mobile-beta-release.md)의 별도 `Mobile beta release` 워크플로를 사용합니다.
+
 | 작업 | 실행 환경 | 결과 |
 | --- | --- | --- |
 | Next.js server | Ubuntu 24.04, Node 26.12.1 | standalone 서버 압축 파일 |

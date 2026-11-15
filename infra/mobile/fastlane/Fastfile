@@ -1,0 +1,50 @@
+require "json"
+require "google/apis/androidpublisher_v3"
+require "googleauth"
+
+opt_out_usage
+
+ROOT = File.expand_path("../../..", __dir__)
+MOBILE_ID = JSON.parse(File.read(File.join(ROOT, "packages/contracts/identity.json"))).fetch("applicationIds").fetch("mobile")
+
+desc "Verify closed track exists, then upload signed AAB without changing listing metadata"
+lane :android_closed do
+  track = ENV.fetch("PLAY_CLOSED_TRACK")
+  UI.user_error!("Only a closed testing track is allowed") if ["production", "beta", "internal"].include?(track.downcase)
+  status = ENV.fetch("PLAY_RELEASE_STATUS")
+  UI.user_error!("Invalid release status") unless ["draft", "completed"].include?(status)
+  publisher = Google::Apis::AndroidpublisherV3::AndroidPublisherService.new
+  File.open(ENV.fetch("PLAY_JSON_PATH")) do |file|
+    publisher.authorization = Google::Auth::ServiceAccountCredentials.make_creds(
+      json_key_io: file, scope: "https://www.googleapis.com/auth/androidpublisher"
+    )
+  end
+  edit = publisher.insert_edit(MOBILE_ID, Google::Apis::AndroidpublisherV3::AppEdit.new)
+  begin
+    tracks = publisher.list_edit_tracks(MOBILE_ID, edit.id).tracks || []
+    names = tracks.map(&:track)
+    UI.user_error!("Configured closed track '#{track}' is absent. API track names: #{names.join(', ')}") unless names.include?(track)
+  ensure
+    publisher.delete_edit(MOBILE_ID, edit.id)
+  end
+  upload_to_play_store(
+    package_name: MOBILE_ID, json_key: ENV.fetch("PLAY_JSON_PATH"),
+    aab: File.join(ROOT, "apps/web/android/app/build/outputs/bundle/release/app-release.aab"),
+    track: track, release_status: status,
+    skip_upload_metadata: true, skip_upload_images: true, skip_upload_screenshots: true, skip_upload_changelogs: true
+  )
+end
+
+desc "Upload signed IPA to TestFlight; do not submit a public App Store release"
+lane :ios_testflight do
+  key = app_store_connect_api_key(
+    key_id: ENV.fetch("ASC_KEY_ID"), issuer_id: ENV.fetch("ASC_ISSUER_ID"),
+    key_filepath: ENV.fetch("ASC_PRIVATE_KEY_PATH"), in_house: false
+  )
+  upload_to_testflight(
+    api_key: key, app_identifier: MOBILE_ID,
+    ipa: File.join(ROOT, "apps/web/ios/build/beta/Routy.ipa"),
+    skip_submission: true, skip_waiting_for_build_processing: true,
+    distribute_external: false
+  )
+end
