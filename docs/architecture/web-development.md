@@ -88,7 +88,7 @@ docker compose -f compose.dev.yaml exec -e NEXT_PUBLIC_API_BASE_URL=https://eowo
 
 - Docker의 Node 26.12.1에서 의존성 설치, API 타입 생성, ESLint, TypeScript 검사와 Prisma 스키마 검증을 통과했습니다.
 - 서버용 standalone 빌드와 Capacitor 정적 빌드를 검증했습니다. 정적 결과에 API 경로가 없고 원본 서버 소스가 유지되는 것도 확인했습니다.
-- 정적 빌드 검증에는 `https://routy.test/api`를 사용했습니다. 실제 API 서버 주소는 아직 설정하지 않았습니다.
+- 초기 정적 빌드 검증에는 `https://routy.test/api`를 사용했습니다. 현재 운영 목표 API 주소는 `https://eowoo.org/api`이며 해당 주소로 모바일 정적 빌드도 검증했습니다. 실제 접속을 위한 서버 배포와 DNS 및 HTTPS 설정은 별도로 진행합니다.
 - 개발 서버의 `/`와 `/api/health`가 HTTP 200을 반환하고, 개발 PostgreSQL의 쿼리가 정상 실행되는 것을 확인했습니다.
 - 운영 Docker 이미지를 빌드하고 비관리자 `node` 계정으로 실행하여 `/`와 `/api/health`의 HTTP 200 응답을 확인했습니다. 검증용 운영 컨테이너는 종료했습니다.
 

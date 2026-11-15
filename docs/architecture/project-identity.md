@@ -30,3 +30,14 @@ Kotlin 소스는 `src/<변형>/kotlin/org/eowoo/routy/`에 있습니다. 실행 
 ## 기존 설치와 기록
 
 이번 패키지 변경은 Android에서 별도 앱으로 취급됩니다. 기존 설치를 덮어쓰거나 제거하지 않으며, 기존 앱의 내부 파일과 설치 인증 키가 새 앱으로 자동 이동하지 않습니다. 새 앱은 새 설치로 등록되므로 기존 계정 연결과 서버 기록을 계속 사용하려면 별도의 데이터 이전 절차가 필요합니다. 현재 작업은 기존 설치, 주행 원본과 서버 DB를 삭제하거나 계정 연결을 변경하지 않습니다.
+
+## 변경 검증 (2026-11-15)
+
+- 새 namespace에서 엔진 167개와 차량 앱 40개, 총 Kotlin 단위 테스트 207개 통과. Python 실행 도구 회귀 테스트 70개와 웹 기록/API/복습 검증 18개 통과.
+- 웹 타입 검사와 ESLint 통과. 실제 개발 서버가 반환한 HTML에서 팀 한글명과 영문명, 홈페이지 링크 및 author/publisher 메타데이터를 확인했습니다.
+- Capacitor CLI가 새 공통 설정을 읽는 것을 확인했고 앱 ID는 `org.eowoo.routy`입니다. `NEXT_PUBLIC_API_BASE_URL=https://eowoo.org/api`로 모바일 정적 빌드가 통과했으며 출력 HTML과 JavaScript의 팀 표시 및 API 주소를 검사했습니다.
+- debug APK 빌드와 Android Lint 통과(오류 0건, 기존 경고 17건). Android aapt로 `org.eowoo.routy.pleos.debug`와 새 DrivingActivity 진입점을 확인했고, 최종 DEX에 이전 프로젝트 namespace가 남지 않은 것을 검사했습니다.
+- release manifest의 `org.eowoo.routy.pleos`와 기본 BuildConfig API 주소 `https://eowoo.org`를 확인했습니다. 새 JVM mainClass를 통한 고정 시나리오 34개도 통과했습니다.
+- Kotlin API 생성 결과는 `org.eowoo.routy.contracts`이며 기본 서버는 `https://eowoo.org`입니다. 이전 생성 패키지 트리는 정리됐고 프로젝트 소스에서 이전 소유 namespace 참조가 없는 것을 확인했습니다.
+
+APK는 기존과 동일한 `apps/pleos/app/build/outputs/apk/debug/app-debug.apk`, 모바일 정적 출력은 `apps/web/out/`입니다. 이번 검증은 새 식별자의 빌드와 로컬 서비스 검증이며 새 도메인으로의 배포나 기존 설치 데이터의 이전을 수행한 결과는 아닙니다.
